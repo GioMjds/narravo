@@ -1,0 +1,13 @@
+model = "gpt-5.5"
+model_reasoning_effort = "high"
+
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+web_search = "live"
+
+[features]
+multi_agent = true
+shell_snapshot = true
+codex_git_commit = true
+undo = true
