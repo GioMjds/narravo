@@ -1,3 +1,9 @@
+import { fetchLyrics } from './lrclib-client';
+import {
+  fetchTrackContext,
+  fetchAlbumContext,
+  fetchArtistContext,
+} from './lastfm-client';
 import type {
   NormalizedMetadata,
   PromptTemplateKey,
@@ -12,41 +18,64 @@ export async function assembleContext(
   const evidenceBlocks: EvidenceBlock[] = [];
   const missingSignals: string[] = [];
 
-  // Always add metadata block
+  // ── Always include normalized metadata ──────────────────────────────────────
   evidenceBlocks.push({
     kind: 'metadata',
-    label: 'Track metadata',
-    text: formatMetadataAsText(metadata),
+    label: 'Release metadata',
+    text: formatMetadata(metadata),
   });
 
-  // Try to fetch lyrics (track only)
-  if (metadata.contentType === 'track') {
-    const lyrics = await fetchLyrics(metadata.title, metadata.artistName);
-    if (lyrics) {
-      evidenceBlocks.push({ kind: 'lyrics', label: 'Lyrics', text: lyrics });
-    } else {
-      missingSignals.push('lyrics');
-    }
+  // ── Content-type specific evidence fetches ──────────────────────────────────
+  switch (metadata.contentType) {
+    case 'track':
+      await assembleTrackEvidence(metadata, evidenceBlocks, missingSignals);
+      break;
+    case 'ep-single':
+    case 'album':
+      await assembleAlbumEvidence(metadata, evidenceBlocks, missingSignals);
+      break;
+    case 'playlist':
+      await assemblePlaylistEvidence(metadata, evidenceBlocks, missingSignals);
+      break;
   }
 
-  // Try to fetch description (album, playlist, ep-single)
-  if (['album', 'ep-single', 'playlist'].includes(metadata.contentType)) {
-    // fetch from Spotify/YouTube API if available
-    missingSignals.push('editorial description');
+  // ── Always try artist context ────────────────────────────────────────────────
+  const artistCtx = await fetchArtistContext(metadata.artistName);
+  if (artistCtx.bioSummary) {
+    evidenceBlocks.push({
+      kind: 'description',
+      label: 'Artist background',
+      text: artistCtx.bioSummary,
+    });
+  } else {
+    missingSignals.push('artist biography');
   }
 
+  if (artistCtx.tags.length > 0) {
+    evidenceBlocks.push({
+      kind: 'metadata',
+      label: 'Artist genre tags',
+      text: artistCtx.tags.join(', '),
+    });
+  }
+
+  // ── Derive confidence inputs ──────────────────────────────────────────────────
   const hasLyrics = evidenceBlocks.some((b) => b.kind === 'lyrics');
   const hasDescription = evidenceBlocks.some((b) => b.kind === 'description');
   const hasTracklist = evidenceBlocks.some((b) => b.kind === 'tracklist');
 
-  // Derive coverage
-  const isNonTrack = ['album', 'ep-single', 'playlist'].includes(
-    metadata.contentType,
-  );
+  // Coverage bands:
+  // rich    = lyrics present, OR description + tags present
+  // partial = at least metadata + one enrichment signal
+  // sparse  = metadata only
+  const enrichmentCount = evidenceBlocks.filter(
+    (b) => b.kind !== 'metadata',
+  ).length;
+
   const coverage =
-    hasLyrics || hasDescription
+    hasLyrics || (hasDescription && enrichmentCount >= 2)
       ? 'rich'
-      : evidenceBlocks.length > 1 || isNonTrack
+      : enrichmentCount >= 1
         ? 'partial'
         : 'sparse';
 
@@ -59,36 +88,145 @@ export async function assembleContext(
   };
 }
 
-function formatMetadataAsText(m: NormalizedMetadata): string {
+// ─── Track ────────────────────────────────────────────────────────────────────
+
+async function assembleTrackEvidence(
+  metadata: NormalizedMetadata,
+  blocks: EvidenceBlock[],
+  missing: string[],
+): Promise<void> {
+  // Lyrics
+  const lyricsResult = await fetchLyrics(
+    metadata.title,
+    metadata.artistName,
+    metadata.albumOrCollectionTitle || undefined,
+  );
+
+  if (lyricsResult.ok) {
+    blocks.push({
+      kind: 'lyrics',
+      label: 'Lyrics',
+      text: lyricsResult.lyrics,
+    });
+  } else {
+    missing.push('lyrics');
+  }
+
+  // Track-level Last.fm context
+  const trackCtx = await fetchTrackContext(metadata.title, metadata.artistName);
+
+  if (trackCtx.wikiSummary) {
+    blocks.push({
+      kind: 'description',
+      label: 'Track notes',
+      text: trackCtx.wikiSummary,
+    });
+  } else {
+    missing.push('track description');
+  }
+
+  if (trackCtx.tags.length > 0) {
+    blocks.push({
+      kind: 'metadata',
+      label: 'Track genre tags',
+      text: trackCtx.tags.join(', '),
+    });
+  }
+
+  // Album context for the track's parent release
+  if (metadata.albumOrCollectionTitle) {
+    const albumCtx = await fetchAlbumContext(
+      metadata.albumOrCollectionTitle,
+      metadata.artistName,
+    );
+
+    if (albumCtx.wikiSummary) {
+      blocks.push({
+        kind: 'description',
+        label: 'Album context',
+        text: albumCtx.wikiSummary,
+      });
+    }
+  }
+}
+
+// ─── Album / EP ───────────────────────────────────────────────────────────────
+
+async function assembleAlbumEvidence(
+  metadata: NormalizedMetadata,
+  blocks: EvidenceBlock[],
+  missing: string[],
+): Promise<void> {
+  const albumCtx = await fetchAlbumContext(
+    metadata.albumOrCollectionTitle || metadata.title,
+    metadata.artistName,
+  );
+
+  if (albumCtx.wikiSummary) {
+    blocks.push({
+      kind: 'description',
+      label: 'Album description',
+      text: albumCtx.wikiSummary,
+    });
+  } else {
+    missing.push('album description');
+  }
+
+  if (albumCtx.tags.length > 0) {
+    blocks.push({
+      kind: 'metadata',
+      label: 'Album genre tags',
+      text: albumCtx.tags.join(', '),
+    });
+  }
+
+  if (albumCtx.tracklist && albumCtx.tracklist.length > 0) {
+    blocks.push({
+      kind: 'tracklist',
+      label: 'Tracklist',
+      text: albumCtx.tracklist.map((t, i) => `${i + 1}. ${t}`).join('\n'),
+    });
+  } else {
+    missing.push('tracklist');
+  }
+}
+
+// ─── Playlist ─────────────────────────────────────────────────────────────────
+
+async function assemblePlaylistEvidence(
+  metadata: NormalizedMetadata,
+  blocks: EvidenceBlock[],
+  missing: string[],
+): Promise<void> {
+  // Playlists have no Last.fm equivalent — metadata + artist tags
+  // are the main signals. Mark the key gaps explicitly.
+  missing.push('playlist editorial description');
+  missing.push('individual track lyrics');
+
+  // If playlist has a description from the resolver, include it
+  if (
+    metadata.albumOrCollectionTitle &&
+    metadata.albumOrCollectionTitle !== metadata.title
+  ) {
+    blocks.push({
+      kind: 'description',
+      label: 'Playlist description',
+      text: metadata.albumOrCollectionTitle,
+    });
+  }
+}
+
+// ─── Metadata formatter ───────────────────────────────────────────────────────
+
+function formatMetadata(m: NormalizedMetadata): string {
   return [
     `Title: ${m.title}`,
     `Artist: ${m.artistName}`,
-    `Release: ${m.releaseLabel}`,
+    m.albumOrCollectionTitle ? `Release: ${m.albumOrCollectionTitle}` : null,
     `Platform: ${m.platform}`,
-    m.trackCount ? `Track count: ${m.trackCount}` : null,
+    `Release label: ${m.releaseLabel}`,
+    m.trackCount != null ? `Track count: ${m.trackCount}` : null,
   ]
     .filter(Boolean)
     .join('\n');
-}
-
-async function fetchLyrics(
-  title: string,
-  artist: string,
-): Promise<string | null> {
-  // Option A: Musixmatch API
-  // Option B: lyrics.ovh (free, no auth)
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(
-      `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`,
-      { signal: controller.signal },
-    );
-    clearTimeout(timeout);
-    if (!res.ok) return null;
-    const data = (await res.json()) as { lyrics?: string };
-    return data.lyrics?.trim() ?? null;
-  } catch {
-    return null;
-  }
 }

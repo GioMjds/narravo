@@ -33,25 +33,16 @@ export async function resolveSource(url: string): Promise<ResolveResult> {
   }
 
   const host = parsed.hostname.toLowerCase();
-  const isSpotifyHost = host === 'spotify.com' || host.endsWith('.spotify.com');
-  const isYouTubeMusicHost =
-    host === 'music.youtube.com' || host === 'www.music.youtube.com';
-  const isYouTubeHost =
-    host === 'youtube.com' ||
-    host === 'www.youtube.com' ||
-    host === 'm.youtube.com' ||
-    host === 'youtu.be' ||
-    host.endsWith('.youtube.com');
 
-  if (isSpotifyHost) {
+  if (host.includes('spotify.com')) {
     return resolveSpotifyUrl(parsed, url);
   }
 
-  if (isYouTubeMusicHost) {
+  if (host === 'music.youtube.com' || host === 'www.music.youtube.com') {
     return resolveYouTubeMusicUrl(parsed, url);
   }
 
-  if (isYouTubeHost) {
+  if (host.includes('youtube.com') || host === 'youtu.be') {
     return {
       ok: false,
       error: {
@@ -77,6 +68,7 @@ async function resolveSpotifyUrl(
   parsed: URL,
   rawUrl: string,
 ): Promise<ResolveResult> {
+  // Strip query params from pathname — Spotify share links include ?si=...
   const segments = parsed.pathname.split('/').filter(Boolean);
   const [type, id] = segments;
 
@@ -115,22 +107,36 @@ async function resolveSpotifyUrl(
 function mapSpotifyError(err: unknown): ResolveResult {
   const message = err instanceof Error ? err.message : String(err);
 
-  if (message === 'spotify_not_found' || message === 'spotify_private') {
+  // True 404 — content doesn't exist or was removed
+  if (message === 'spotify_not_found') {
     return {
       ok: false,
       error: {
         code: 'private_track',
-        message: 'This track or release is private or unavailable on Spotify.',
+        message: 'This track or release could not be found on Spotify.',
       },
     };
   }
 
+  // Rate limited
   if (message === 'spotify_rate_limited') {
     return {
       ok: false,
       error: {
         code: 'rate_limited',
         message: 'Spotify is rate limiting this request. Retry in a moment.',
+      },
+    };
+  }
+
+  // 401/403 should never bubble up here — they're caught inside spotify-client
+  // and trigger the oEmbed fallback. If they somehow escape, treat as resolve_failure.
+  if (message === 'spotify_unauthorized' || message === 'spotify_forbidden') {
+    return {
+      ok: false,
+      error: {
+        code: 'resolve_failure',
+        message: `Spotify returned an auth error (${message}). Check SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET.`,
       },
     };
   }
@@ -193,7 +199,7 @@ async function resolveYouTubeMusicTrack(
     }
   }
 
-  // Fallback: oEmbed → iTunes (same pattern as Spotify)
+  // Fallback: oEmbed → iTunes
   const oembed = await fetchYouTubeOembed(rawUrl);
 
   if (!oembed.ok) {
@@ -225,7 +231,6 @@ async function resolveYouTubeMusicTrack(
   const itunes = await resolveTrackFromItunes(title, artistHint, rawUrl);
 
   if (itunes) {
-    // Keep YouTube thumbnail if higher quality
     return {
       ok: true,
       metadata: {
@@ -258,15 +263,12 @@ async function resolveYouTubeMusicBrowse(
   browseId: string,
   rawUrl: string,
 ): Promise<ResolveResult> {
-  // VL prefix = playlist
   if (browseId.startsWith('VL')) {
     const playlistId = browseId.slice(2);
     const metadata = await resolveYouTubeMusicPlaylist(playlistId, rawUrl);
     return { ok: true, metadata };
   }
 
-  // MPREb_ prefix = album/EP — no free API covers this cleanly
-  // Best effort: signal unsupported for now
   return {
     ok: false,
     error: {
