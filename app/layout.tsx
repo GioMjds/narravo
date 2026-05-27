@@ -1,11 +1,23 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
-import { Plus_Jakarta_Sans } from 'next/font/google';
+import { Cormorant_Garamond, Inter, JetBrains_Mono } from 'next/font/google';
 import { ThemeProvider } from '@/components/theme-provider';
 import { cn } from '@/lib/utils';
+import { Footer, Header } from '@/components/layouts';
 
-const jakarta = Plus_Jakarta_Sans({
-  variable: '--font-jakarta',
+const inter = Inter({
+  variable: '--font-sans',
+  subsets: ['latin'],
+});
+
+const cormorant = Cormorant_Garamond({
+  variable: '--font-serif',
+  subsets: ['latin'],
+  weight: ['500', '600', '700'],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: '--font-mono',
   subsets: ['latin'],
 });
 
@@ -13,17 +25,19 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: 'white' }, // Must change the color into RGBA
-    { media: '(prefers-color-scheme: dark)', color: 'black' }, // Must change the color into RGBA
-  ]
-}
-
-export const metadata: Metadata = {
-  title: 'Narravo',
-  description: 'Feel the story, not the words.',
+    { media: '(prefers-color-scheme: light)', color: '#f6efe5' },
+    { media: '(prefers-color-scheme: dark)', color: '#171310' },
+  ],
 };
 
-export const jsonLd = {};
+export const metadata: Metadata = {
+  title: {
+    default: 'Narravo',
+    template: '%s | Narravo',
+  },
+  description:
+    'Narravo turns supported song links into grounded critic-style reviews with visible evidence and a meaning-first rubric.',
+};
 
 export default function RootLayout({
   children,
@@ -36,26 +50,24 @@ export default function RootLayout({
       suppressHydrationWarning
       data-scroll-behavior="smooth"
       className={cn(
-        'h-full',
-        'antialiased',
-        jakarta.variable,
-        'font-sans',
+        'h-full antialiased',
+        inter.variable,
+        cormorant.variable,
+        jetbrainsMono.variable,
       )}
     >
-      <head>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
-      </head>
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full bg-background text-foreground">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <div className="relative flex min-h-dvh flex-col">
+            <Header />
+            {children}
+            <Footer />
+          </div>
         </ThemeProvider>
       </body>
     </html>
