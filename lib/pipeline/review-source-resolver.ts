@@ -33,16 +33,25 @@ export async function resolveSource(url: string): Promise<ResolveResult> {
   }
 
   const host = parsed.hostname.toLowerCase();
+  const isSpotifyHost = host === 'spotify.com' || host.endsWith('.spotify.com');
+  const isYouTubeMusicHost =
+    host === 'music.youtube.com' || host === 'www.music.youtube.com';
+  const isYouTubeHost =
+    host === 'youtube.com' ||
+    host === 'www.youtube.com' ||
+    host === 'm.youtube.com' ||
+    host === 'youtu.be' ||
+    host.endsWith('.youtube.com');
 
-  if (host.includes('spotify.com')) {
+  if (isSpotifyHost) {
     return resolveSpotifyUrl(parsed, url);
   }
 
-  if (host === 'music.youtube.com' || host === 'www.music.youtube.com') {
+  if (isYouTubeMusicHost) {
     return resolveYouTubeMusicUrl(parsed, url);
   }
 
-  if (host.includes('youtube.com') || host === 'youtu.be') {
+  if (isYouTubeHost) {
     return {
       ok: false,
       error: {

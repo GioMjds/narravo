@@ -64,6 +64,7 @@ export function parseGeminiOutput(
     if (
       !evidence.length ||
       scores.length !== 5 ||
+      scores.some((s) => Number.isNaN(s.score) || s.score < 0 || s.score > 100) ||
       !takeaway ||
       !confidence.label
     ) {

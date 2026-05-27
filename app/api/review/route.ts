@@ -47,7 +47,9 @@ export async function POST(req: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      let metadataEmitted = false;
       const pushEvent = (event: NarravoReviewStreamEvent) => {
+        if (event.type === 'metadata') metadataEmitted = true;
         controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
       };
 
@@ -55,25 +57,10 @@ export async function POST(req: NextRequest) {
         const result = await runReviewPipeline(url, pushEvent);
 
         if (!result.ok) {
-          // Pipeline failed after stream opened — the metadata event may or may
-          // not have been emitted already. Encode the error as a recoverable
-          // complete event so the existing ReviewExperience state machine can
-          // handle it without a broken stream.
-          //
-          // The ReviewExperience client already handles recoverable errors from
-          // the initial JSON response path. Here we need to decide: if metadata
-          // was never emitted (resolver failed), close without events and let
-          // the client fall through to the error state. If metadata was emitted
-          // but generation failed, send a minimal complete event so the UI
-          // doesn't hang in streaming-review state.
-          //
-          // The orchestrator emits metadata before generation starts, so a
-          // pipeline failure after that point means the client is already in
-          // streaming-review state. Emit a complete with empty result fields
-          // so the state machine transitions cleanly. The ReviewErrorState panel
-          // is separate from the complete event — this is a known gap in the
-          // current UI contract. For MVP, the hint text in the complete payload
-          // acts as the visible signal.
+          if (!metadataEmitted) {
+            controller.error(new Error(result.error.message));
+            return;
+          }
           pushEvent({
             type: 'complete',
             result: {

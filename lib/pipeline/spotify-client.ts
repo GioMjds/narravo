@@ -14,6 +14,7 @@ export async function resolveSpotifyTrack(
   if (!oembed.ok) {
     if (oembed.status === 404) throw new Error('spotify_not_found');
     if (oembed.status === 403) throw new Error('spotify_private');
+    if (oembed.status === 429) throw new Error('spotify_rate_limited');
     throw new Error(`spotify_error:${oembed.status}`);
   }
 
@@ -55,6 +56,7 @@ export async function resolveSpotifyAlbum(
 
   if (!oembed.ok) {
     if (oembed.status === 404) throw new Error('spotify_not_found');
+    if (oembed.status === 429) throw new Error('spotify_rate_limited');
     throw new Error(`spotify_error:${oembed.status}`);
   }
 
@@ -89,6 +91,7 @@ export async function resolveSpotifyPlaylist(
 
   if (!oembed.ok) {
     if (oembed.status === 404) throw new Error('spotify_not_found');
+    if (oembed.status === 429) throw new Error('spotify_rate_limited');
     throw new Error(`spotify_error:${oembed.status}`);
   }
 

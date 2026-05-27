@@ -1,7 +1,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { GeminiPromptPlan, PipelineError } from './types';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const apiKey = process.env.GEMINI_API_KEY;
+const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 type GeminiResult =
   | { ok: true; fullText: string; proseParts: string[] }
@@ -12,6 +13,15 @@ export async function streamFromGemini(
   onChunk: (text: string) => void,
 ): Promise<GeminiResult> {
   try {
+    if (!genAI) {
+      return {
+        ok: false,
+        error: {
+          code: 'resolve_failure',
+          message: 'Gemini API key not configured',
+        },
+      };
+    }
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.0-flash',
       systemInstruction: plan.systemInstruction,
@@ -20,6 +30,7 @@ export async function streamFromGemini(
     const result = await model.generateContentStream(plan.userPrompt);
 
     let fullText = '';
+    let emittedLength = 0;
     const proseParts: string[] = [];
     let xmlStarted = false;
 
@@ -29,17 +40,21 @@ export async function streamFromGemini(
 
       // Stop emitting chunks once XML tail begins
       if (!xmlStarted) {
-        const xmlIndex = text.indexOf('<ReviewResult>');
+        const xmlIndex = fullText.indexOf('<ReviewResult>');
         if (xmlIndex !== -1) {
           xmlStarted = true;
-          const proseChunk = text.slice(0, xmlIndex);
+          const proseChunk = fullText.slice(emittedLength, xmlIndex);
           if (proseChunk.trim()) {
             proseParts.push(proseChunk);
             onChunk(proseChunk);
           }
         } else {
-          proseParts.push(text);
-          onChunk(text);
+          const proseChunk = fullText.slice(emittedLength);
+          if (proseChunk) {
+            proseParts.push(proseChunk);
+            onChunk(proseChunk);
+            emittedLength = fullText.length;
+          }
         }
       }
     }

@@ -40,10 +40,13 @@ export async function assembleContext(
   const hasTracklist = evidenceBlocks.some((b) => b.kind === 'tracklist');
 
   // Derive coverage
+  const isNonTrack = ['album', 'ep-single', 'playlist'].includes(
+    metadata.contentType,
+  );
   const coverage =
     hasLyrics || hasDescription
       ? 'rich'
-      : evidenceBlocks.length > 1
+      : evidenceBlocks.length > 1 || isNonTrack
         ? 'partial'
         : 'sparse';
 
@@ -75,9 +78,13 @@ async function fetchLyrics(
   // Option A: Musixmatch API
   // Option B: lyrics.ovh (free, no auth)
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
     const res = await fetch(
       `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`,
+      { signal: controller.signal },
     );
+    clearTimeout(timeout);
     if (!res.ok) return null;
     const data = (await res.json()) as { lyrics?: string };
     return data.lyrics?.trim() ?? null;

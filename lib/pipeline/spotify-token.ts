@@ -4,6 +4,7 @@ type TokenCache = {
 };
 
 let cache: TokenCache | null = null;
+let inFlight: Promise<string> | null = null;
 
 export async function getSpotifyToken(): Promise<string> {
   const now = Date.now();
@@ -13,40 +14,48 @@ export async function getSpotifyToken(): Promise<string> {
     return cache.token;
   }
 
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    throw new Error('Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET');
+  if (inFlight) {
+    return inFlight;
   }
 
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
-    'base64',
-  );
+  inFlight = (async () => {
+    const clientId = process.env.SPOTIFY_CLIENT_ID;
+    const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      throw new Error('Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET');
+    }
 
-  const res = await fetch('https://accounts.spotify.com/api/token', {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: 'grant_type=client_credentials',
-  });
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
+      'base64',
+    );
+    const res = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'grant_type=client_credentials',
+    });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Spotify token fetch failed: ${res.status} ${text}`);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Spotify token fetch failed: ${res.status} ${text}`);
+    }
+
+    const data = (await res.json()) as {
+      access_token: string;
+      expires_in: number;
+    };
+    cache = {
+      token: data.access_token,
+      expiresAt: Date.now() + data.expires_in * 1000,
+    };
+    return cache.token;
+  })();
+
+  try {
+    return await inFlight;
+  } finally {
+    inFlight = null;
   }
-
-  const data = (await res.json()) as {
-    access_token: string;
-    expires_in: number;
-  };
-
-  cache = {
-    token: data.access_token,
-    expiresAt: now + data.expires_in * 1000,
-  };
-
-  return cache.token;
 }
