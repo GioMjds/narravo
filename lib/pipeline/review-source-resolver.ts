@@ -34,15 +34,19 @@ export async function resolveSource(url: string): Promise<ResolveResult> {
 
   const host = parsed.hostname.toLowerCase();
 
-  if (host.includes('spotify.com')) {
-    return resolveSpotifyUrl(parsed, url);
-  }
+  const isSpotifyHost = host === 'spotify.com' || host.endsWith('.spotify.com');
+  if (isSpotifyHost) return resolveSpotifyUrl(parsed, url);
 
   if (host === 'music.youtube.com' || host === 'www.music.youtube.com') {
     return resolveYouTubeMusicUrl(parsed, url);
   }
 
-  if (host.includes('youtube.com') || host === 'youtu.be') {
+  const isYouTubeHost =
+    host === 'youtube.com' ||
+    host.endsWith('.youtube.com') ||
+    host === 'youtu.be';
+
+  if (isYouTubeHost) {
     return {
       ok: false,
       error: {

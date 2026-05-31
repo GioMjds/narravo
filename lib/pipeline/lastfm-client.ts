@@ -1,30 +1,37 @@
 const BASE = 'https://ws.audioscrobbler.com/2.0';
 
-function getApiKey(): string {
-  const key = process.env.LASTFM_API_KEY;
-  if (!key) throw new Error('Missing LASTFM_API_KEY');
+function getApiKey(): string | null {
+  const key = process.env.LASTFM_API_KEY ?? null;
   return key;
 }
 
 async function lastfmGet<T>(params: Record<string, string>): Promise<T | null> {
+  const apiKey = getApiKey();
+  if (!apiKey) return null;
+
   const query = new URLSearchParams({
     ...params,
-    api_key: getApiKey(),
+    api_key: apiKey,
     format: 'json',
   });
 
-  const res = await fetch(`${BASE}/?${query.toString()}`, {
-    cache: 'no-store',
-  });
+  try {
+    const res = await fetch(`${BASE}/?${query.toString()}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+    });
 
-  if (!res.ok) return null;
+    if (!res.ok) return null;
 
-  const data = (await res.json()) as Record<string, unknown>;
+    const data = (await res.json()) as Record<string, unknown>;
 
-  // Last.fm returns { error: number, message: string } for failures
-  if ('error' in data) return null;
+    // Last.fm returns { error: number, message: string } for failures
+    if ('error' in data) return null;
 
-  return data as T;
+    return data as T;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Response shapes ──────────────────────────────────────────────────────────

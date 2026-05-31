@@ -1,19 +1,18 @@
-import { fetchLyrics } from './lrclib-client';
+import { fetchLyrics } from '@/lib/pipeline/lrclib-client';
 import {
   fetchTrackContext,
   fetchAlbumContext,
   fetchArtistContext,
-} from './lastfm-client';
+} from '@/lib/pipeline/lastfm-client';
 import type {
   NormalizedMetadata,
   PromptTemplateKey,
   ReviewContextPacket,
   EvidenceBlock,
-} from './types';
+} from '@/lib/pipeline/types';
 
 export async function assembleContext(
   metadata: NormalizedMetadata,
-  _templateKey: PromptTemplateKey,
 ): Promise<ReviewContextPacket> {
   const evidenceBlocks: EvidenceBlock[] = [];
   const missingSignals: string[] = [];

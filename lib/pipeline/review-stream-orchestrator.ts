@@ -108,16 +108,12 @@ export async function runReviewPipeline(
 
   // ── Stage 3: Assemble context ─────────────────────────────────────────────
   console.log('[pipeline] Stage 3: Assembling context...');
-  const context = await assembleContext(resolved.metadata, templateKey);
+  const context = await assembleContext(resolved.metadata);
   console.log('[pipeline] ✓ Context assembled:', {
     coverage: context.coverage,
     evidenceKinds: context.evidenceBlocks.map((b) => b.kind),
     missingSignals: context.missingSignals,
   });
-
-  // NOTE: We intentionally do NOT bail on 'sparse' coverage.
-  // Gemini can produce a useful review from metadata alone and will
-  // self-report low confidence in the output's <Confidence> block.
 
   // ── Stage 4: Build prompt ─────────────────────────────────────────────────
   console.log('[pipeline] Stage 4: Building prompt...');

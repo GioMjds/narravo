@@ -1,10 +1,8 @@
-// scripts/test-assembler.ts
 import { config } from 'dotenv';
 config({ path: '.env.local' });
 
-import { resolveSource } from '../lib/pipeline/review-source-resolver';
-import { routeTemplate } from '../lib/pipeline/review-template-router';
-import { assembleContext } from '../lib/pipeline/review-context-assembler';
+import { resolveSource } from '@/lib/pipeline/review-source-resolver';
+import { assembleContext } from '@/lib/pipeline/review-context-assembler';
 
 async function main() {
   const urls = [
@@ -29,8 +27,7 @@ async function main() {
       continue;
     }
 
-    const templateKey = routeTemplate(resolved.metadata);
-    const context = await assembleContext(resolved.metadata, templateKey);
+    const context = await assembleContext(resolved.metadata);
 
     console.log('\nCoverage:', context.coverage);
     console.log('Missing signals:', context.missingSignals);

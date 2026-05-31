@@ -21,10 +21,10 @@ export async function fetchLyrics(
   });
 
   try {
-    const res = await fetch(
-      `https://lrclib.net/api/get?${params.toString()}`,
-      { cache: 'no-store' },
-    );
+    const res = await fetch(`https://lrclib.net/api/get?${params.toString()}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+    });
 
     // 404 = no match, not an error worth throwing
     if (res.status === 404) {

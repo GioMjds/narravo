@@ -1,10 +1,10 @@
-import { getSpotifyToken } from './spotify-token';
-import { fetchSpotifyOembed } from './spotify-oembed';
+import { getSpotifyToken } from '@/lib/pipeline/spotify-token';
+import { fetchSpotifyOembed } from '@/lib/pipeline/spotify-oembed';
 import {
   resolveTrackFromItunes,
   resolveAlbumFromItunes,
-} from './itunes-client';
-import type { NormalizedMetadata, ContentType } from './types';
+} from '@/lib/pipeline/itunes-client';
+import type { NormalizedMetadata, ContentType } from '@/lib/pipeline/types';
 
 // ─── Spotify Web API response shapes ─────────────────────────────────────────
 
@@ -79,6 +79,7 @@ async function spotifyApiFetch<T>(
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
+    signal: AbortSignal.timeout(8000),
   });
 
   if (!res.ok) {
