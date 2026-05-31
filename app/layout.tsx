@@ -1,6 +1,6 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
-import { Cormorant_Garamond, Inter, JetBrains_Mono } from 'next/font/google';
+import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import { ThemeProvider } from '@/components/theme-provider';
 import { cn } from '@/lib/utils';
 import { Footer, Header } from '@/components/layouts';
@@ -10,14 +10,8 @@ const inter = Inter({
   subsets: ['latin'],
 });
 
-const cormorant = Cormorant_Garamond({
-  variable: '--font-serif',
-  subsets: ['latin'],
-  weight: ['500', '600', '700'],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: '--font-mono',
+const jakarta = Plus_Jakarta_Sans({
+  variable: '--font-jakarta',
   subsets: ['latin'],
 });
 
@@ -52,8 +46,7 @@ export default function RootLayout({
       className={cn(
         'h-full antialiased',
         inter.variable,
-        cormorant.variable,
-        jetbrainsMono.variable,
+        jakarta.variable,
       )}
     >
       <body className="min-h-full bg-background text-foreground">

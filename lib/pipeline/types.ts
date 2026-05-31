@@ -12,13 +12,13 @@ export type NormalizedMetadata = {
   coverArtUrl: string;
   releaseLabel: string;
   trackCount?: number;
-}
+};
 
 export type EvidenceBlock = {
-  kind: 'lyrics' | 'description' | 'metadata' | 'playlist';
+  kind: 'lyrics' | 'description' | 'metadata' | 'playlist' | 'tracklist';
   label: string;
   text: string;
-}
+};
 
 export type ReviewContextPacket = {
   metadata: NormalizedMetadata;
@@ -29,13 +29,13 @@ export type ReviewContextPacket = {
     hasLyrics: boolean;
     hasDescription: boolean;
     hasTracklist: boolean;
-  }
-}
+  };
+};
 
 export type GeminiPromptPlan = {
   systemInstruction: string;
   userPrompt: string;
-}
+};
 
 export type PipelineError =
   | { code: 'unsupported_platform'; message: string }
