@@ -28,8 +28,9 @@ export default function ReviewErrorPage({
           The review page hit an unexpected fault
         </h1>
         <p className="mt-4 text-sm leading-7 text-muted-foreground">
-          Narravo keeps expected product failures inside the normal review states.
-          This screen is reserved for runtime errors that need a fresh attempt.
+          Narravo keeps expected product failures inside the normal review
+          states. This screen is reserved for runtime errors that need a fresh
+          attempt.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Button

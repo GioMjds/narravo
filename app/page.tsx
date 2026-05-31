@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Headphones, Sparkles, Waves } from 'lucide-react';
-import { UrlSubmissionForm } from '@/components/narravo/url-submission-form';
+import { UrlSubmissionForm } from '@/components/pages/review/url-submission-form';
 import { demoLinks } from '@/lib/narravo-review';
 
 export default function Home() {

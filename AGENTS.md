@@ -72,10 +72,7 @@ Treat the repository layout as intentional.
   - Route files such as `page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`, `not-found.tsx`, and `api/**/route.ts`.
 - `components/pages/`
   - Page-level client experiences and page composition components.
-  - This is the preferred home for interactive page implementations that back an App Router route.
-- `components/narravo/`
-  - Product-specific reusable components that are not full page containers.
-  - Examples: forms, review panels, reusable product widgets.
+  - This is the preferred home for interactive page implementations that back an App Router route that has an Client Component in it.
 - `components/layouts/`
   - Shared site shell elements such as `Header` and `Footer`.
 - `components/ui/`
@@ -126,27 +123,25 @@ Avoid in `app/`:
 - prompt-building or parser logic
 - long blocks of UI composition that belong to a page module
 
-### `components/pages/*` Responsibilities
+### `components/pages/<page-name>` Responsibilities
 
-Use `components/pages/*` for page-level client or hybrid composition:
+Use `components/pages/<page-name>` for page-level client or hybrid composition:
 
 - client state machines
 - route-specific interactive experiences
 - page-specific section orchestration
 - streaming or optimistic UI behaviors
 - large page layouts that would make `app/**/page.tsx` noisy
+- `index.ts` for barrel importing
+- `types.ts` for page-specific types
+- `helpers.tsx` for page-specific components and logic
+- `page.client.tsx` for Client Component implementations and interactions to part with the `app/**/page.tsx` Server Components
 
 If a route becomes interactive, the preferred pattern is:
 
 1. keep `app/**/page.tsx` as a Server Component
 2. pass normalized props into a page component under `components/pages/*`
 3. put `"use client"` only in the page component or its interactive subtrees
-
-For example, future preferred shapes are:
-
-- `app/review/page.tsx` -> server wrapper
-- `components/pages/review/review-page.tsx` -> page-level experience
-- `components/narravo/*` -> reusable review subcomponents
 
 ## Architecture Rules
 
