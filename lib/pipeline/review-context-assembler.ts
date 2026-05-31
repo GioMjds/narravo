@@ -6,7 +6,6 @@ import {
 } from '@/lib/pipeline/lastfm-client';
 import type {
   NormalizedMetadata,
-  PromptTemplateKey,
   ReviewContextPacket,
   EvidenceBlock,
 } from '@/lib/pipeline/types';
