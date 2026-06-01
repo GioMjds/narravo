@@ -10,9 +10,37 @@ export async function POST(req: NextRequest) {
   let userLyrics: string;
 
   try {
-    const body = (await req.json()) as { url?: string; lyrics?: string };
-    url = body.url?.trim() ?? '';
-    userLyrics = body.lyrics?.trim() ?? '';
+    const body = (await req.json()) as { url?: unknown; lyrics?: unknown };
+   url = typeof body.url === 'string' ? body.url.trim() : '';
+   if (body.lyrics != null && typeof body.lyrics !== 'string') {
+     return NextResponse.json(
+       {
+         error: {
+           code: 'resolve_failure',
+           status: 400,
+           title: 'Invalid request body',
+           message: '`lyrics` must be a string when provided.',
+           hint: 'Send a JSON body with a string `url` and optional string `lyrics`.',
+         },
+       },
+       { status: 400 },
+     );
+   }
+   userLyrics = body.lyrics?.trim() ?? '';
+   if (userLyrics.length > 64 * 1024) {
+     return NextResponse.json(
+       {
+         error: {
+           code: 'resolve_failure',
+           status: 413,
+           title: 'Lyrics payload too large',
+           message: 'Lyrics uploads are limited to 64 KB.',
+           hint: 'Trim the lyrics file and try again.',
+         },
+       },
+       { status: 413 },
+     );
+   }
   } catch {
     return NextResponse.json(
       {

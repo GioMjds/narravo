@@ -15,10 +15,10 @@ import { fetchLyricsFromGenius } from './genius-lyrics';
 
 export async function assembleContext(
   metadata: NormalizedMetadata,
+  userLyrics?: string,
 ): Promise<ReviewContextPacket> {
   const evidenceBlocks: EvidenceBlock[] = [];
   const missingSignals: string[] = [];
-  const userLyrics: string | undefined = undefined;
   let normalizedLyricSections: RawSection[] | null = null;
 
   // ── Always include normalized metadata ──────────────────────────────────────
