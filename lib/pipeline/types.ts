@@ -1,3 +1,5 @@
+import { RawSection } from "./lyrics-normalizer";
+
 export type ContentType = 'track' | 'ep-single' | 'album' | 'playlist';
 export type Platform = 'spotify' | 'youtube-music';
 export type PromptTemplateKey = ContentType;
@@ -30,6 +32,7 @@ export type ReviewContextPacket = {
     hasDescription: boolean;
     hasTracklist: boolean;
   };
+  normalizedLyricSections: RawSection[] | null;
 };
 
 export type GeminiPromptPlan = {

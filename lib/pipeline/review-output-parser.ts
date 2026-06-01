@@ -1,5 +1,14 @@
-import type { NarravoReviewComplete } from '@/lib/narravo-review';
+import type {
+  NarravoReviewComplete,
+  LyricsIntelligence,
+  LyricsSection,
+  AnnotatedLine,
+  LyricsSectionType,
+  LyricsConfidence,
+  LyricsSpeakerTarget,
+} from '@/lib/narravo-review';
 import { PipelineError } from './types';
+import type { RawSection } from './lyrics-normalizer';
 
 type ParseResult =
   | { ok: true; result: NarravoReviewComplete }
@@ -101,10 +110,21 @@ export function parseGeminiOutput(
       };
     }
 
+    const lyricsIntelligence = parseLyricsIntelligence(fullText);
+
+    console.log('[parser] LyricsIntelligence present:', !!lyricsIntelligence);
     console.log('[parser] ✓ Parse successful');
     return {
       ok: true,
-      result: { reviewText, evidence, scores, tags, takeaway, confidence },
+      result: {
+        reviewText,
+        evidence,
+        scores,
+        tags,
+        takeaway,
+        confidence,
+        lyricsIntelligence,
+      },
     };
   } catch (err) {
     console.error('[parser] ✗ Exception during parse:', err);
@@ -116,4 +136,119 @@ export function parseGeminiOutput(
       },
     };
   }
+}
+
+export function backfillLineText(
+  intelligence: LyricsIntelligence,
+  normalizedSections: RawSection[],
+): LyricsIntelligence {
+  // Build lineId → text lookup
+  const lineMap = new Map<string, string>();
+  for (const s of normalizedSections) {
+    for (const l of s.lines) {
+      lineMap.set(l.lineId, l.text);
+    }
+  }
+
+  return {
+    ...intelligence,
+    sections: intelligence.sections.map((s) => ({
+      ...s,
+      lines: s.lines.map((l) => ({
+        ...l,
+        text: lineMap.get(l.lineId) ?? l.text,
+      })),
+    })),
+  };
+}
+
+function parseLyricsIntelligence(xml: string): LyricsIntelligence | null {
+  const liMatch = xml.match(
+    /<LyricsIntelligence>([\s\S]*?)<\/LyricsIntelligence>/,
+  );
+  if (!liMatch) return null;
+
+  const liXml = liMatch[1];
+
+  const overallThemesMatch = liXml.match(
+    /<OverallThemes>(.*?)<\/OverallThemes>/s,
+  );
+  const overallThemes = overallThemesMatch
+    ? overallThemesMatch[1]
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : [];
+
+  const sectionMatches = [
+    ...liXml.matchAll(
+      /<Section\s+id="([^"]+)"\s+type="([^"]+)"\s+label="([^"]+)"\s+confidence="([^"]+)">([\s\S]*?)<\/Section>/g,
+    ),
+  ];
+
+  if (sectionMatches.length === 0) {
+    console.warn('[parser] LyricsIntelligence: no sections found — rejecting');
+    return null;
+  }
+
+  const sections: LyricsSection[] = [];
+
+  for (const match of sectionMatches) {
+    const [, sectionId, type, label, confidence, body] = match;
+
+    const themesMatch = body.match(/<Themes>(.*?)<\/Themes>/s);
+    const emotionMatch = body.match(/<Emotion>(.*?)<\/Emotion>/s);
+    const figurativeMatch = body.match(
+      /<FigurativeLanguage>(.*?)<\/FigurativeLanguage>/s,
+    );
+    const referencesMatch = body.match(/<References>(.*?)<\/References>/s);
+    const speakerMatch = body.match(/<SpeakerTarget>(.*?)<\/SpeakerTarget>/s);
+    const literalMatch = body.match(
+      /<LiteralInterpretation>(.*?)<\/LiteralInterpretation>/s,
+    );
+    const symbolicMatch = body.match(
+      /<SymbolicInterpretation>(.*?)<\/SymbolicInterpretation>/s,
+    );
+
+    const lineMatches = [
+      ...body.matchAll(
+        /<Line\s+id="([^"]+)"\s+confidence="([^"]+)">([\s\S]*?)<\/Line>/g,
+      ),
+    ];
+
+    const lines: AnnotatedLine[] = lineMatches.map((lm) => ({
+      lineId: lm[1],
+      text: '', // filled in by the orchestrator via normalizedLyricSections lookup
+      annotation: lm[3].trim(),
+      confidence: (lm[2] as LyricsConfidence) ?? 'speculative',
+    }));
+
+    const figRaw = figurativeMatch?.[1]?.trim() ?? 'none';
+    const refRaw = referencesMatch?.[1]?.trim() ?? 'none';
+
+    sections.push({
+      sectionId,
+      type: (type as LyricsSectionType) ?? 'other',
+      label,
+      confidence: (confidence as LyricsConfidence) ?? 'speculative',
+      themes: themesMatch
+        ? themesMatch[1]
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : [],
+      emotion: emotionMatch?.[1]?.trim() ?? 'unknown',
+      figurativeLanguage: figRaw === 'none' ? null : figRaw,
+      references: refRaw === 'none' ? null : refRaw,
+      speakerTarget:
+        (speakerMatch?.[1]?.trim() as LyricsSpeakerTarget) ?? 'unknown',
+      literalInterpretation: literalMatch?.[1]?.trim() ?? '',
+      symbolicInterpretation: symbolicMatch?.[1]?.trim() ?? '',
+      lines,
+    });
+  }
+
+  if (sections.length === 0) return null;
+
+  return { overallThemes, sections };
 }

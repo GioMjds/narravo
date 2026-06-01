@@ -4,6 +4,11 @@ import type {
   NarravoReviewMetadata,
 } from '@/lib/narravo-review';
 
+export type LyricsUploaderProps = {
+  onLyrics: (lyrics: string | null) => void;
+  activeLyrics: boolean;
+};
+
 export type UrlSubmissionFormProps = {
   defaultValue?: string;
   compact?: boolean;
@@ -28,6 +33,7 @@ export type ReviewState =
       url: string;
       metadata: NarravoReviewMetadata;
       reviewText: string;
+      userLyricsActive: boolean;
     }
   | {
       kind: 'parsed-complete';
@@ -35,6 +41,7 @@ export type ReviewState =
       metadata: NarravoReviewMetadata;
       reviewText: string;
       result: NarravoReviewComplete;
+      userLyricsActive: boolean;
     }
   | {
       kind: 'recoverable-error';

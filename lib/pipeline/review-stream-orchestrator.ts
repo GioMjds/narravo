@@ -8,6 +8,7 @@ import type {
   NarravoReviewStreamEvent,
   NarravoRecoverableError,
 } from '@/lib/narravo-review';
+import { backfillLineText } from './review-output-parser';
 
 function pipelineErrorToRecoverable(
   code: string,
@@ -58,6 +59,7 @@ function pipelineErrorToRecoverable(
 export async function runReviewPipeline(
   url: string,
   emit: (event: NarravoReviewStreamEvent) => void,
+  userLyrics?: string,
 ): Promise<{ ok: true } | { ok: false; error: NarravoRecoverableError }> {
   console.log('\n[pipeline] ══════════════════════════════════════');
   console.log('[pipeline] Starting review pipeline for:', url);
@@ -99,6 +101,7 @@ export async function runReviewPipeline(
         resolved.metadata.platform === 'spotify' ? 'Spotify' : 'YouTube Music',
       coverArtUrl: resolved.metadata.coverArtUrl,
     },
+    userLyricsActive: !!userLyrics,
   });
 
   // ── Stage 2: Route template ────────────────────────────────────────────────
@@ -153,6 +156,7 @@ export async function runReviewPipeline(
 
   // ── Stage 6: Parse output ─────────────────────────────────────────────────
   console.log('[pipeline] Stage 6: Parsing Gemini output...');
+
   const parsed = parseGeminiOutput(geminiResult.fullText, reviewText.trim());
 
   if (!parsed.ok) {
@@ -176,6 +180,18 @@ export async function runReviewPipeline(
   console.log('[pipeline] Pipeline complete for:', resolved.metadata.title);
   console.log('[pipeline] ══════════════════════════════════════\n');
 
-  emit({ type: 'complete', result: parsed.result });
+  let finalResult = parsed.result;
+
+  if (finalResult.lyricsIntelligence && context.normalizedLyricSections) {
+    finalResult = {
+      ...finalResult,
+      lyricsIntelligence: backfillLineText(
+        finalResult.lyricsIntelligence,
+        context.normalizedLyricSections,
+      ),
+    };
+  }
+
+  emit({ type: 'complete', result: finalResult });
   return { ok: true };
 }

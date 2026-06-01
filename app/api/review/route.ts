@@ -7,10 +7,12 @@ import {
 
 export async function POST(req: NextRequest) {
   let url: string;
+  let userLyrics: string;
 
   try {
-    const body = (await req.json()) as { url?: string };
+    const body = (await req.json()) as { url?: string; lyrics?: string };
     url = body.url?.trim() ?? '';
+    userLyrics = body.lyrics?.trim() ?? '';
   } catch {
     return NextResponse.json(
       {
@@ -54,7 +56,7 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        const result = await runReviewPipeline(url, pushEvent);
+        const result = await runReviewPipeline(url, pushEvent, userLyrics);
 
         if (!result.ok) {
           if (!metadataEmitted) {
@@ -73,6 +75,7 @@ export async function POST(req: NextRequest) {
                 label: 'Low confidence',
                 note: result.error.title,
               },
+              lyricsIntelligence: null,
             },
           });
         }

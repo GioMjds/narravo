@@ -46,12 +46,14 @@ export type NarravoReviewComplete = {
     label: string;
     note: string;
   };
+  lyricsIntelligence: LyricsIntelligence | null; // null = unavailable or non-track
 };
 
 export type NarravoReviewStreamEvent =
   | {
       type: 'metadata';
       metadata: NarravoReviewMetadata;
+      userLyricsActive: boolean;
     }
   | {
       type: 'chunk';
@@ -96,13 +98,15 @@ export const demoLinks = [
   {
     href: 'https://open.spotify.com/track/demo-someone-like-you',
     label: 'Adele - Someone Like You',
-    description: 'A heartbreak reading centered on memory, comparison, and release.',
+    description:
+      'A heartbreak reading centered on memory, comparison, and release.',
     platformLabel: 'Spotify demo',
   },
   {
     href: 'https://music.youtube.com/watch?v=demo-fast-car',
     label: 'Tracy Chapman - Fast Car',
-    description: 'An escape narrative built from motion, class pressure, and fragile hope.',
+    description:
+      'An escape narrative built from motion, class pressure, and fragile hope.',
     platformLabel: 'YouTube Music demo',
   },
 ] as const;
@@ -121,8 +125,8 @@ const reviewSeeds: Record<string, NarravoReviewSeed> = {
     },
     reviewParagraphs: [
       'Narravo reads this song as heartbreak after the loud part is already over. The voice is not arguing for reunion so much as trying to survive the shock of seeing someone else move on first, which gives the review its mixture of grace and humiliation.',
-      'What makes the meaning land is the song\'s refusal to dramatize itself into revenge. The emotional center is comparison: one life keeps moving, while the other keeps circling the memory of what almost became permanent. That makes the grief feel adult, because it is less about explosion than about learning how to stand inside a changed reality.',
-      'The sparse arrangement matters to the reading. The piano and open space keep the lyric from hiding behind production tricks, so the feeling is exposed in a nearly conversational way. Narravo therefore scores the track highest when the song\'s emotional restraint and lyrical plainness start reinforcing each other.',
+      "What makes the meaning land is the song's refusal to dramatize itself into revenge. The emotional center is comparison: one life keeps moving, while the other keeps circling the memory of what almost became permanent. That makes the grief feel adult, because it is less about explosion than about learning how to stand inside a changed reality.",
+      "The sparse arrangement matters to the reading. The piano and open space keep the lyric from hiding behind production tricks, so the feeling is exposed in a nearly conversational way. Narravo therefore scores the track highest when the song's emotional restraint and lyrical plainness start reinforcing each other.",
     ],
     evidence: [
       {
@@ -130,14 +134,14 @@ const reviewSeeds: Record<string, NarravoReviewSeed> = {
         items: [
           'Letting go is present, but it arrives as discipline rather than closure.',
           'The song keeps returning to memory and comparison instead of direct accusation.',
-          'Its meaning depends on accepting another person\'s future while still grieving your own.',
+          "Its meaning depends on accepting another person's future while still grieving your own.",
         ],
       },
       {
         title: 'Emotional cues',
         items: [
           'The vocal delivery feels wounded but controlled, which keeps the grief believable.',
-          'Restraint is the song\'s strongest cue: it sounds like someone trying not to fracture in public.',
+          "Restraint is the song's strongest cue: it sounds like someone trying not to fracture in public.",
           'The track moves from ache toward reluctant acceptance without pretending the pain is finished.',
         ],
       },
@@ -179,11 +183,10 @@ const reviewSeeds: Record<string, NarravoReviewSeed> = {
     ],
     tags: ['heartbreak', 'acceptance', 'memory', 'restraint', 'piano-ballad'],
     takeaway:
-      'Narravo hears the song less as a plea for return than as a dignified struggle to survive someone else\'s future.',
+      "Narravo hears the song less as a plea for return than as a dignified struggle to survive someone else's future.",
     confidence: {
       label: 'High confidence',
-      note:
-        'This demo review is grounded in curated lyrical and tonal cues for the track, so the interpretation can stay specific without bluffing.',
+      note: 'This demo review is grounded in curated lyrical and tonal cues for the track, so the interpretation can stay specific without bluffing.',
     },
   },
   'youtube-music:demo-fast-car': {
@@ -199,8 +202,8 @@ const reviewSeeds: Record<string, NarravoReviewSeed> = {
     },
     reviewParagraphs: [
       'Narravo reads this song as a story about motion becoming a temporary theology. The car is never just transportation; it is the object onto which freedom, class escape, tenderness, and self-invention are all projected at once.',
-      'The song\'s meaning sharpens because every promise of movement collides with inherited hardship. That contrast keeps the review from flattening the track into optimism. It is a song about wanting velocity badly enough to believe that momentum might rewrite a life, even when the old patterns keep chasing the speaker.',
-      'The acoustic atmosphere matters as much as the narrative. The performance stays calm, almost documentary in tone, which stops the song from romanticizing poverty or struggle. Narravo\'s critic read therefore treats the track as a clear-eyed account of hope under pressure rather than a simple anthem of escape.',
+      "The song's meaning sharpens because every promise of movement collides with inherited hardship. That contrast keeps the review from flattening the track into optimism. It is a song about wanting velocity badly enough to believe that momentum might rewrite a life, even when the old patterns keep chasing the speaker.",
+      "The acoustic atmosphere matters as much as the narrative. The performance stays calm, almost documentary in tone, which stops the song from romanticizing poverty or struggle. Narravo's critic read therefore treats the track as a clear-eyed account of hope under pressure rather than a simple anthem of escape.",
     ],
     evidence: [
       {
@@ -255,20 +258,25 @@ const reviewSeeds: Record<string, NarravoReviewSeed> = {
         note: 'Repeated listens keep revealing how tightly the emotional and material stakes are intertwined.',
       },
     ],
-    tags: ['escape', 'class pressure', 'hope', 'acoustic', 'narrative songwriting'],
+    tags: [
+      'escape',
+      'class pressure',
+      'hope',
+      'acoustic',
+      'narrative songwriting',
+    ],
     takeaway:
       'Narravo hears the song as a study of how people invest movement with the power to rescue them, even when the old conditions remain close behind.',
     confidence: {
       label: 'High confidence',
-      note:
-        'This demo review uses curated lyrical and tonal cues for the track, which allows a specific reading without pretending the evidence is broader than it is.',
+      note: 'This demo review uses curated lyrical and tonal cues for the track, which allows a specific reading without pretending the evidence is broader than it is.',
     },
   },
 };
 
-export function validateNarravoUrlInput(url: string):
-  | { ok: true }
-  | { ok: false; message: string } {
+export function validateNarravoUrlInput(
+  url: string,
+): { ok: true } | { ok: false; message: string } {
   const trimmedUrl = url.trim();
 
   if (!trimmedUrl) {
@@ -451,8 +459,9 @@ export function resolveNarravoReview(url: string): NarravoResolveResult {
     ok: true,
     payload: {
       metadata,
-      reviewChunks: seed.reviewParagraphs.map((paragraph, index) =>
-        `${paragraph}${index === seed.reviewParagraphs.length - 1 ? '' : '\n\n'}`,
+      reviewChunks: seed.reviewParagraphs.map(
+        (paragraph, index) =>
+          `${paragraph}${index === seed.reviewParagraphs.length - 1 ? '' : '\n\n'}`,
       ),
       complete: {
         reviewText: seed.reviewParagraphs.join('\n\n'),
@@ -461,6 +470,7 @@ export function resolveNarravoReview(url: string): NarravoResolveResult {
         tags: seed.tags,
         takeaway: seed.takeaway,
         confidence: seed.confidence,
+        lyricsIntelligence: null,
       },
     },
   };
@@ -531,3 +541,54 @@ function escapeSvg(value: string) {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;');
 }
+
+export type LyricsConfidence = 'confident' | 'plausible' | 'speculative';
+
+export type LyricsSpeakerTarget =
+  | 'self'
+  | 'lover'
+  | 'ex-partner'
+  | 'friend'
+  | 'family'
+  | 'God'
+  | 'audience'
+  | 'authority'
+  | 'community'
+  | 'unknown';
+
+export type LyricsSectionType =
+  | 'verse'
+  | 'chorus'
+  | 'bridge'
+  | 'intro'
+  | 'outro'
+  | 'pre-chorus'
+  | 'hook'
+  | 'other';
+
+export type AnnotatedLine = {
+  lineId: string; // stable ID from deterministic helper e.g. "L001"
+  text: string; // raw lyric line
+  annotation: string; // short interpretive note
+  confidence: LyricsConfidence;
+};
+
+export type LyricsSection = {
+  sectionId: string; // e.g. "S001"
+  type: LyricsSectionType;
+  label: string; // e.g. "Verse 1", "Chorus"
+  confidence: LyricsConfidence;
+  themes: string[];
+  emotion: string;
+  figurativeLanguage: string | null;
+  references: string | null;
+  speakerTarget: LyricsSpeakerTarget;
+  literalInterpretation: string;
+  symbolicInterpretation: string;
+  lines: AnnotatedLine[];
+};
+
+export type LyricsIntelligence = {
+  overallThemes: string[];
+  sections: LyricsSection[];
+};

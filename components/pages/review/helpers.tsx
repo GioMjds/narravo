@@ -3,13 +3,15 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { ReactNode, useId, useState, useTransition } from 'react';
+import { ReactNode, useId, useRef, useState, useTransition } from 'react';
 import {
   demoLinks,
   validateNarravoUrlInput,
   type NarravoRecoverableError,
   type NarravoReviewMetadata,
+  type LyricsIntelligence,
 } from '@/lib/narravo-review';
+import { LyricsIntelligencePanel } from './lyrics-intelligence-panel';
 import {
   Card,
   CardContent,
@@ -20,7 +22,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import type { ReviewState, UrlSubmissionFormProps } from './types';
+import type { LyricsUploaderProps, ReviewState, UrlSubmissionFormProps } from './types';
 import {
   AlertCircle,
   ArrowRight,
@@ -28,9 +30,12 @@ import {
   BadgeInfo,
   CircleAlert,
   EqualApproximately,
+  FileText,
   Link2,
   Loader2,
   RefreshCcw,
+  Upload,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -526,5 +531,138 @@ export function LoadingCard({ title, body }: { title: string; body: string }) {
         <div className="h-20 animate-pulse rounded-[1.5rem] bg-muted/70" />
       </CardContent>
     </Card>
+  );
+}
+
+export function LyricsIntelligenceSection({
+  intelligence,
+}: {
+  intelligence: LyricsIntelligence | null | undefined;
+}) {
+  if (!intelligence) return null;
+  return <LyricsIntelligencePanel intelligence={intelligence} />;
+}
+
+export function LyricsUploader({ onLyrics, activeLyrics }: LyricsUploaderProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [error, setError] = useState<string>('');
+
+  async function handleFile(file: File) {
+    setError('');
+
+    if (!file.name.endsWith('.txt') && file.type !== 'text/plain') {
+      setError('Only .txt files are supported.');
+      return;
+    }
+
+    if (file.size > 64 * 1024) {
+      setError('File is too large. Max 64 KB.');
+      return;
+    }
+
+    const text = await file.text();
+    const trimmed = text.trim();
+
+    if (!trimmed) {
+      setError('The file appears to be empty.');
+      return;
+    }
+
+    setFileName(file.name);
+    onLyrics(trimmed);
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) void handleFile(file);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file) void handleFile(file);
+  }
+
+  function clear() {
+    setFileName(null);
+    setError('');
+    onLyrics(null);
+    if (inputRef.current) inputRef.current.value = '';
+  }
+
+  return (
+    <div className="rounded-[1.75rem] border border-border/70 bg-card/80 p-5">
+      <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+        Supply lyrics
+      </p>
+      <p className="mt-2 text-sm leading-7 text-muted-foreground">
+        If this track isn&apos;t in our lyrics database, upload a{' '}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">.txt</code> file
+        with the lyrics. User-supplied lyrics take priority over all other sources.
+      </p>
+
+      {fileName ? (
+        /* Loaded state */
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-[1.25rem] border border-border/70 bg-background/80 px-4 py-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <FileText className="size-4 shrink-0 text-(--color-accent-strong)" />
+            <span className="truncate text-sm font-medium text-foreground">
+              {fileName}
+            </span>
+            {activeLyrics && (
+              <span className="shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                Active
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={clear}
+            className="shrink-0 rounded-full p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            aria-label="Remove lyrics file"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      ) : (
+        /* Drop zone */
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          className="mt-4 flex flex-col items-center gap-3 rounded-[1.25rem] border border-dashed border-border bg-background/60 px-4 py-6 text-center transition hover:border-foreground/20 hover:bg-background/80"
+        >
+          <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Upload className="size-4" />
+          </div>
+          <div>
+            <p className="text-sm text-foreground">
+              Drop a <code className="rounded bg-muted px-1 py-0.5 text-xs">.txt</code> file here
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">or</p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="cursor-pointer rounded-full px-4"
+            onClick={() => inputRef.current?.click()}
+          >
+            Browse file
+          </Button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".txt,text/plain"
+            className="sr-only"
+            onChange={handleChange}
+          />
+        </div>
+      )}
+
+      {error && (
+        <p className="mt-2 px-1 text-sm font-medium text-destructive">{error}</p>
+      )}
+    </div>
   );
 }

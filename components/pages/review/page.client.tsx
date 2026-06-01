@@ -14,6 +14,8 @@ import {
   ReviewHero,
   StreamingReviewPanel,
   UrlSubmissionForm,
+  LyricsIntelligenceSection,
+  LyricsUploader,
 } from './helpers';
 
 export function ReviewExperience({ initialUrl }: ReviewExperienceProps) {
@@ -21,6 +23,7 @@ export function ReviewExperience({ initialUrl }: ReviewExperienceProps) {
     createInitialState(initialUrl),
   );
   const [attempt, setAttempt] = useState(0);
+  const [userLyrics, setUserLyrics] = useState<string | null>(null);
 
   const applyEvent = useEffectEvent((event: NarravoReviewStreamEvent) => {
     switch (event.type) {
@@ -38,6 +41,7 @@ export function ReviewExperience({ initialUrl }: ReviewExperienceProps) {
             url: current.url,
             metadata: event.metadata,
             reviewText: current.reviewText,
+            userLyricsActive: event.userLyricsActive,
           };
         });
         break;
@@ -66,6 +70,7 @@ export function ReviewExperience({ initialUrl }: ReviewExperienceProps) {
             reviewText:
               current.reviewText.trim() || event.result.reviewText.trim(),
             result: event.result,
+            userLyricsActive: current.userLyricsActive,
           };
         });
         break;
@@ -73,13 +78,13 @@ export function ReviewExperience({ initialUrl }: ReviewExperienceProps) {
   });
 
   const startReview = useEffectEvent(
-    async (url: string, signal: AbortSignal) => {
+    async (url: string, signal: AbortSignal, lyrics: string | null) => {
       const response = await fetch('/api/review', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, lyrics: lyrics ?? undefined }),
         signal,
       });
 
@@ -155,33 +160,35 @@ export function ReviewExperience({ initialUrl }: ReviewExperienceProps) {
 
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
-      void startReview(nextState.url, controller.signal).catch((error) => {
-        if (controller.signal.aborted) {
-          return;
-        }
+      void startReview(nextState.url, controller.signal, userLyrics).catch(
+        (error) => {
+          if (controller.signal.aborted) {
+            return;
+          }
 
-        setState({
-          kind: 'recoverable-error',
-          url: nextState.url,
-          error: {
-            code: 'resolve_failure',
-            status: 500,
-            title: 'Narravo could not finish the review',
-            message:
-              error instanceof Error
-                ? error.message
-                : 'An unexpected error interrupted the review stream.',
-            hint: 'Retry the review or return to the landing page.',
-          },
-        });
-      });
+          setState({
+            kind: 'recoverable-error',
+            url: nextState.url,
+            error: {
+              code: 'resolve_failure',
+              status: 500,
+              title: 'Narravo could not finish the review',
+              message:
+                error instanceof Error
+                  ? error.message
+                  : 'An unexpected error interrupted the review stream.',
+              hint: 'Retry the review or return to the landing page.',
+            },
+          });
+        },
+      );
     }, 0);
 
     return () => {
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [attempt, initialUrl]);
+  }, [attempt, initialUrl, userLyrics]);
 
   const heroMetadata =
     state.kind === 'streaming-review' || state.kind === 'parsed-complete'
@@ -189,6 +196,9 @@ export function ReviewExperience({ initialUrl }: ReviewExperienceProps) {
       : state.kind === 'resolving'
         ? state.metadata
         : null;
+
+  const showLyricsUploader =
+    state.kind !== 'streaming-review' && state.kind !== 'resolving';
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
@@ -212,6 +222,17 @@ export function ReviewExperience({ initialUrl }: ReviewExperienceProps) {
             showExamples={state.kind === 'recoverable-error'}
           />
 
+          {showLyricsUploader && (
+            <LyricsUploader
+              onLyrics={setUserLyrics}
+              activeLyrics={
+                (state.kind === 'parsed-complete' ||
+                  state.kind === 'streaming-review') &&
+                state.userLyricsActive
+              }
+            />
+          )}
+
           <div className="rounded-[1.75rem] border border-border/70 bg-card/80 p-5">
             <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
               Trust boundary
@@ -227,6 +248,13 @@ export function ReviewExperience({ initialUrl }: ReviewExperienceProps) {
         <div className="space-y-6">
           <StreamingReviewPanel state={state} />
           <EvidenceAndRubric state={state} />
+          <LyricsIntelligenceSection
+            intelligence={
+              state.kind === 'parsed-complete'
+                ? state.result.lyricsIntelligence
+                : null
+            }
+          />
 
           {state.kind === 'recoverable-error' ? (
             <ReviewErrorState

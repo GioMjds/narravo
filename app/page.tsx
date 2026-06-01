@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Headphones, Sparkles, Waves } from 'lucide-react';
-import { UrlSubmissionForm } from '@/components/pages/review/url-submission-form';
+import { UrlSubmissionForm } from '@/components/pages/review/helpers';
 import { demoLinks } from '@/lib/narravo-review';
 
 export default function Home() {
@@ -19,20 +19,17 @@ export default function Home() {
                 What is this song really saying?
               </h1>
               <p className="max-w-2xl text-lg leading-8 text-muted-foreground sm:text-xl">
-                Paste a Spotify or YouTube Music link and Narravo turns the track
-                into a grounded critic&apos;s note: themes, emotional cues, sonic
-                atmosphere, and a meaning-first review built from visible evidence.
+                Paste a Spotify or YouTube Music link and Narravo turns the
+                track into a grounded critic&apos;s note: themes, emotional
+                cues, sonic atmosphere, and a meaning-first review built from
+                visible evidence.
               </p>
             </div>
-            <UrlSubmissionForm
-              className="max-w-2xl"
-              showExamples
-              autoFocus
-            />
+            <UrlSubmissionForm className="max-w-2xl" showExamples autoFocus />
             <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-              Narravo is designed to separate facts, evidence, and interpretation.
-              If lyrical context is unavailable, the review should say so instead
-              of pretending certainty.
+              Narravo is designed to separate facts, evidence, and
+              interpretation. If lyrical context is unavailable, the review
+              should say so instead of pretending certainty.
             </p>
           </div>
 
@@ -69,8 +66,8 @@ export default function Home() {
                   Lyrical themes
                 </div>
                 <p className="text-sm leading-7 text-muted-foreground">
-                  The review should name the emotional center, not just summarize
-                  the plot.
+                  The review should name the emotional center, not just
+                  summarize the plot.
                 </p>
               </div>
               <div className="rounded-[1.75rem] border border-border/70 bg-card/85 p-5">
@@ -78,8 +75,8 @@ export default function Home() {
                   Emotional cues
                 </div>
                 <p className="text-sm leading-7 text-muted-foreground">
-                  Tone, restraint, tension, and release are surfaced explicitly in
-                  the evidence layer.
+                  Tone, restraint, tension, and release are surfaced explicitly
+                  in the evidence layer.
                 </p>
               </div>
               <div className="rounded-[1.75rem] border border-border/70 bg-card/85 p-5">
@@ -87,8 +84,8 @@ export default function Home() {
                   Meaning-first rubric
                 </div>
                 <p className="text-sm leading-7 text-muted-foreground">
-                  Theme clarity, lyrical depth, atmosphere, and replay pull arrive
-                  after the prose is grounded.
+                  Theme clarity, lyrical depth, atmosphere, and replay pull
+                  arrive after the prose is grounded.
                 </p>
               </div>
             </div>
@@ -104,9 +101,9 @@ export default function Home() {
               Use the curated demos to preview the full review experience.
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
-              The page flow is fully implemented. Live resolver coverage is still
-              limited, so these demo links are the fastest way to verify the
-              evidence, streaming, and rubric states end to end.
+              The page flow is fully implemented. Live resolver coverage is
+              still limited, so these demo links are the fastest way to verify
+              the evidence, streaming, and rubric states end to end.
             </p>
           </div>
           <Link

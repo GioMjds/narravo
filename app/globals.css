@@ -123,6 +123,11 @@
   --accent-strong: oklch(0.78 0.11 54);
 }
 
+.dark .react-loading-skeleton {
+  --base-color: oklch(0.27 0.012 42);
+  --highlight-color: oklch(0.32 0.014 44);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
