@@ -1,3 +1,5 @@
+import { detectSections } from './lyrics-normalizer';
+import type { RawSection } from './lyrics-normalizer';
 import { fetchLyrics } from '@/lib/pipeline/lrclib-client';
 import {
   fetchTrackContext,
@@ -9,12 +11,15 @@ import type {
   ReviewContextPacket,
   EvidenceBlock,
 } from '@/lib/pipeline/types';
+import { fetchLyricsFromGenius } from './genius-lyrics';
 
 export async function assembleContext(
   metadata: NormalizedMetadata,
+  userLyrics?: string,
 ): Promise<ReviewContextPacket> {
   const evidenceBlocks: EvidenceBlock[] = [];
   const missingSignals: string[] = [];
+  let normalizedLyricSections: RawSection[] | null = null;
 
   // ── Always include normalized metadata ──────────────────────────────────────
   evidenceBlocks.push({
@@ -26,7 +31,12 @@ export async function assembleContext(
   // ── Content-type specific evidence fetches ──────────────────────────────────
   switch (metadata.contentType) {
     case 'track':
-      await assembleTrackEvidence(metadata, evidenceBlocks, missingSignals);
+      normalizedLyricSections = await assembleTrackEvidence(
+        metadata,
+        evidenceBlocks,
+        missingSignals,
+        userLyrics,
+      );
       break;
     case 'ep-single':
     case 'album':
@@ -83,6 +93,7 @@ export async function assembleContext(
     coverage,
     missingSignals,
     confidenceInputs: { hasLyrics, hasDescription, hasTracklist },
+    normalizedLyricSections: normalizedLyricSections,
   };
 }
 
@@ -92,22 +103,45 @@ async function assembleTrackEvidence(
   metadata: NormalizedMetadata,
   blocks: EvidenceBlock[],
   missing: string[],
-): Promise<void> {
-  // Lyrics
-  const lyricsResult = await fetchLyrics(
-    metadata.title,
-    metadata.artistName,
-    metadata.albumOrCollectionTitle || undefined,
-  );
+  userLyrics?: string,
+): Promise<RawSection[] | null> {
+  let normalizedLyricSections: RawSection[] | null = null;
 
-  if (lyricsResult.ok) {
+  if (userLyrics) {
+    console.log('[assembler] ✓ Lyrics from lrclib');
     blocks.push({
       kind: 'lyrics',
       label: 'Lyrics',
-      text: lyricsResult.lyrics,
+      text: userLyrics,
     });
+    normalizedLyricSections = detectSections(userLyrics);
   } else {
-    missing.push('lyrics');
+    const lyricsResult = await fetchLyrics(
+      metadata.title,
+      metadata.artistName,
+      metadata.albumOrCollectionTitle || undefined,
+    );
+
+    if (lyricsResult.ok) {
+      console.log('[assembler] ✓ Lyrics from lrclib');
+      blocks.push({ kind: 'lyrics', label: 'Lyrics', text: lyricsResult.lyrics });
+      normalizedLyricSections = detectSections(lyricsResult.lyrics);
+    } else {
+      console.log(`[assembler] lrclib miss — trying Genius`);
+      const geniusResult = await fetchLyricsFromGenius(
+        metadata.title,
+        metadata.artistName,
+      );
+
+      if (geniusResult.ok) {
+        console.log('[assembler] ✓ Lyrics from Genius');
+        blocks.push({ kind: 'lyrics', label: 'Lyrics', text: geniusResult.lyrics });
+        normalizedLyricSections = detectSections(geniusResult.lyrics);
+      } else {
+        console.log('[assembler] No lyrics from any source');
+        missing.push('lyrics');
+      }
+    }
   }
 
   // Track-level Last.fm context
@@ -146,6 +180,8 @@ async function assembleTrackEvidence(
       });
     }
   }
+
+  return normalizedLyricSections;
 }
 
 // ─── Album / EP ───────────────────────────────────────────────────────────────
@@ -154,7 +190,7 @@ async function assembleAlbumEvidence(
   metadata: NormalizedMetadata,
   blocks: EvidenceBlock[],
   missing: string[],
-): Promise<void> {
+): Promise<null> {
   const albumCtx = await fetchAlbumContext(
     metadata.albumOrCollectionTitle || metadata.title,
     metadata.artistName,
@@ -187,6 +223,8 @@ async function assembleAlbumEvidence(
   } else {
     missing.push('tracklist');
   }
+
+  return null;
 }
 
 // ─── Playlist ─────────────────────────────────────────────────────────────────
@@ -195,7 +233,7 @@ async function assemblePlaylistEvidence(
   metadata: NormalizedMetadata,
   blocks: EvidenceBlock[],
   missing: string[],
-): Promise<void> {
+): Promise<null> {
   // Playlists have no Last.fm equivalent — metadata + artist tags
   // are the main signals. Mark the key gaps explicitly.
   missing.push('playlist editorial description');
@@ -212,6 +250,8 @@ async function assemblePlaylistEvidence(
       text: metadata.albumOrCollectionTitle,
     });
   }
+
+  return null;
 }
 
 // ─── Metadata formatter ───────────────────────────────────────────────────────

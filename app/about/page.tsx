@@ -14,9 +14,9 @@ export default function AboutPage() {
         </h1>
         <p className="mt-5 max-w-3xl text-lg leading-8 text-muted-foreground">
           The product goal is simple: take a supported song link and return a
-          grounded answer to the question &quot;what is this song about?&quot; The
-          review should read like criticism, but it should also show the evidence
-          that supported the reading.
+          grounded answer to the question &quot;what is this song about?&quot;
+          The review should read like criticism, but it should also show the
+          evidence that supported the reading.
         </p>
       </section>
 
@@ -29,8 +29,9 @@ export default function AboutPage() {
             Supported links
           </h2>
           <p className="mt-3 text-sm leading-7 text-muted-foreground">
-            Narravo currently accepts Spotify track links and YouTube Music track
-            links. Standard YouTube video links are out of scope for this MVP.
+            Narravo currently accepts Spotify track links and YouTube Music
+            track links. Standard YouTube video links are out of scope for this
+            MVP.
           </p>
         </article>
         <article className="rounded-[1.75rem] border border-border/70 bg-card/85 p-6">
@@ -41,9 +42,9 @@ export default function AboutPage() {
             What the AI uses
           </h2>
           <p className="mt-3 text-sm leading-7 text-muted-foreground">
-            Narravo separates resolved facts, lyrical themes, emotional cues, and
-            tonal atmosphere from the interpretation layer. If context is missing,
-            the page should say so explicitly.
+            Narravo separates resolved facts, lyrical themes, emotional cues,
+            and tonal atmosphere from the interpretation layer. If context is
+            missing, the page should say so explicitly.
           </p>
         </article>
         <article className="rounded-[1.75rem] border border-border/70 bg-card/85 p-6">
@@ -67,14 +68,14 @@ export default function AboutPage() {
           </p>
           <div className="mt-4 space-y-4 text-sm leading-7 text-muted-foreground">
             <p>
-              Narravo is trying to behave more like a careful critic than a generic
-              chatbot. That means the page structure matters: metadata first,
-              interpretation second, evidence third, rubric last.
+              Narravo is trying to behave more like a careful critic than a
+              generic chatbot. That means the page structure matters: metadata
+              first, interpretation second, evidence third, rubric last.
             </p>
             <p>
               In this MVP, the UI flow is fully implemented but live song
-              resolution is still limited. Curated demo links are provided so the
-              full streaming and evidence experience can be tested without
+              resolution is still limited. Curated demo links are provided so
+              the full streaming and evidence experience can be tested without
               pretending arbitrary tracks are already grounded.
             </p>
           </div>

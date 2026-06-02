@@ -1,3 +1,4 @@
+import { buildLyricContextText } from './lyrics-normalizer';
 import type {
   GeminiPromptPlan,
   PromptTemplateKey,
@@ -40,6 +41,37 @@ Do not omit any required tags. Do not add tags not listed here.
 </ReviewResult>
 `;
 
+function buildLyricsXmlContract(lyricContextText: string): string {
+  return `
+After the <ReviewResult> XML block, if the content is a track with lyrics, append a second XML block using this exact structure. Do not omit required tags. Do not invent lines not present in the lyric context.
+
+LYRIC CONTEXT (use ONLY these lines):
+${lyricContextText}
+
+<LyricsIntelligence>
+  <OverallThemes>[comma-separated overall themes]</OverallThemes>
+  <Sections>
+    <Section id="[sectionId from context]" type="[verse|chorus|bridge|intro|outro|pre-chorus|hook|other]" label="[e.g. Verse 1]" confidence="[confident|plausible|speculative]">
+      <Themes>[comma-separated themes]</Themes>
+      <Emotion>[one or two words]</Emotion>
+      <FigurativeLanguage>[note or "none"]</FigurativeLanguage>
+      <References>[note or "none"]</References>
+      <SpeakerTarget>[self|lover|ex-partner|friend|family|God|audience|authority|community|unknown]</SpeakerTarget>
+      <LiteralInterpretation>[one sentence]</LiteralInterpretation>
+      <SymbolicInterpretation>[one sentence]</SymbolicInterpretation>
+      <Lines>
+        <Line id="[lineId]" confidence="[confident|plausible|speculative]">[one short annotation — do not restate the lyric]</Line>
+        <!-- repeat for each line in this section -->
+      </Lines>
+    </Section>
+    <!-- repeat Section for each section in the lyric context -->
+  </Sections>
+</LyricsIntelligence>
+
+If lyrics are unavailable or too ambiguous to annotate responsibly, omit the <LyricsIntelligence> block entirely. Do not emit it with empty or fabricated content.
+`;
+}
+
 export function buildPrompt(
   templateKey: PromptTemplateKey,
   context: ReviewContextPacket,
@@ -50,7 +82,16 @@ export function buildPrompt(
 
   const missingText =
     context.missingSignals.length > 0
-      ? `Missing evidence: ${context.missingSignals.join(', ')}. Narrow your interpretation accordingly.`
+      ? templateKey === 'track' && context.missingSignals.includes('lyrics')
+        ? `IMPORTANT: Lyrics are unavailable for this track. Do not speculate about lyrical content, specific themes, or meaning you cannot verify. Limit the review strictly to what the metadata, genre tags, and artist context support. State in the review that a lyric-grounded reading is not yet possible. Set confidence to Low.`
+        : `Missing evidence: ${context.missingSignals.join(', ')}. Narrow your interpretation accordingly.`
+      : '';
+
+  const lyricsContract =
+    templateKey === 'track' && context.normalizedLyricSections
+      ? buildLyricsXmlContract(
+          buildLyricContextText(context.normalizedLyricSections),
+        )
       : '';
 
   const systemInstruction = `You are a careful music critic writing grounded editorial reviews.
@@ -65,7 +106,9 @@ export function buildPrompt(
       Stay grounded. Do not bluff certainty when evidence is thin.
       After the prose, append the XML block as instructed.
       
-      ${XML_CONTRACT}`;
+      ${XML_CONTRACT}
+
+      ${lyricsContract}`;
 
   return { systemInstruction, userPrompt };
 }

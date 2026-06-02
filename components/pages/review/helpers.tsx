@@ -1,19 +1,17 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useEffectEvent, useState, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { ReactNode, useId, useRef, useState, useTransition } from 'react';
 import {
-  AlertCircle,
-  AudioLines,
-  BadgeInfo,
-  CircleAlert,
-  EqualApproximately,
-  Loader2,
-  RefreshCcw,
-} from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+  demoLinks,
+  validateNarravoUrlInput,
+  type NarravoRecoverableError,
+  type NarravoReviewMetadata,
+  type LyricsIntelligence,
+} from '@/lib/narravo-review';
+import { LyricsIntelligencePanel } from './lyrics-intelligence-panel';
 import {
   Card,
   CardContent,
@@ -21,49 +19,27 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { UrlSubmissionForm } from '@/components/narravo/url-submission-form';
-import type {
-  NarravoRecoverableError,
-  NarravoReviewComplete,
-  NarravoReviewMetadata,
-  NarravoReviewStreamEvent,
-} from '@/lib/narravo-review';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import type { LyricsUploaderProps, ReviewState, UrlSubmissionFormProps } from './types';
+import {
+  AlertCircle,
+  ArrowRight,
+  AudioLines,
+  BadgeInfo,
+  CircleAlert,
+  EqualApproximately,
+  FileText,
+  Link2,
+  Loader2,
+  RefreshCcw,
+  Upload,
+  X,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-type ReviewState =
-  | {
-      kind: 'idle-invalid';
-      url: string;
-    }
-  | {
-      kind: 'resolving';
-      url: string;
-      metadata: NarravoReviewMetadata | null;
-      reviewText: string;
-    }
-  | {
-      kind: 'streaming-review';
-      url: string;
-      metadata: NarravoReviewMetadata;
-      reviewText: string;
-    }
-  | {
-      kind: 'parsed-complete';
-      url: string;
-      metadata: NarravoReviewMetadata;
-      reviewText: string;
-      result: NarravoReviewComplete;
-    }
-  | {
-      kind: 'recoverable-error';
-      url: string;
-      error: NarravoRecoverableError;
-    };
-
-type ReviewExperienceProps = {
-  initialUrl: string;
-};
-
-function createInitialState(initialUrl: string): ReviewState {
+export function createInitialState(initialUrl: string): ReviewState {
   const trimmedUrl = initialUrl.trim();
 
   if (!trimmedUrl) {
@@ -78,226 +54,184 @@ function createInitialState(initialUrl: string): ReviewState {
   };
 }
 
-export function ReviewExperience({ initialUrl }: ReviewExperienceProps) {
-  const [state, setState] = useState<ReviewState>(() =>
-    createInitialState(initialUrl),
-  );
-  const [attempt, setAttempt] = useState(0);
+export function UrlSubmissionForm({
+  defaultValue = '',
+  compact = false,
+  showExamples = false,
+  autoFocus = false,
+  className,
+}: UrlSubmissionFormProps) {
+  const router = useRouter();
+  const fieldId = useId();
+  const [value, setValue] = useState<string>(defaultValue);
+  const [error, setError] = useState<string>('');
+  const [isPending, beginTransition] = useTransition();
 
-  const applyEvent = useEffectEvent((event: NarravoReviewStreamEvent) => {
-    switch (event.type) {
-      case 'metadata':
-        setState((current) => {
-          if (
-            current.kind === 'idle-invalid' ||
-            current.kind === 'recoverable-error'
-          ) {
-            return current;
-          }
+  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextValue = value.trim();
+    const validation = validateNarravoUrlInput(nextValue);
 
-          return {
-            kind: 'streaming-review',
-            url: current.url,
-            metadata: event.metadata,
-            reviewText: current.reviewText,
-          };
-        });
-        break;
-      case 'chunk':
-        setState((current) => {
-          if (current.kind !== 'streaming-review') {
-            return current;
-          }
-
-          return {
-            ...current,
-            reviewText: `${current.reviewText}${event.chunk}`,
-          };
-        });
-        break;
-      case 'complete':
-        setState((current) => {
-          if (current.kind !== 'streaming-review') {
-            return current;
-          }
-
-          return {
-            kind: 'parsed-complete',
-            url: current.url,
-            metadata: current.metadata,
-            reviewText:
-              current.reviewText.trim() || event.result.reviewText.trim(),
-            result: event.result,
-          };
-        });
-        break;
+    if (!validation.ok) {
+      setError(validation.message);
+      return;
     }
-  });
 
-  const startReview = useEffectEvent(async (url: string, signal: AbortSignal) => {
-    const response = await fetch('/api/review', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ url }),
-      signal,
+    setError('');
+    beginTransition(() => {
+      router.push(`/review?url=${encodeURIComponent(nextValue)}`);
     });
-
-    if (!response.ok) {
-      const payload = (await response.json()) as {
-        error: NarravoRecoverableError;
-      };
-
-      setState({
-        kind: 'recoverable-error',
-        url,
-        error: payload.error,
-      });
-
-      return;
-    }
-
-    if (!response.body) {
-      setState({
-        kind: 'recoverable-error',
-        url,
-        error: {
-          code: 'resolve_failure',
-          status: 500,
-          title: 'No review stream was returned',
-          message:
-            'Narravo expected a streaming review response, but the connection returned empty.',
-          hint: 'Please retry the request.',
-        },
-      });
-
-      return;
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-
-      while (buffer.includes('\n')) {
-        const newlineIndex = buffer.indexOf('\n');
-        const raw = buffer.slice(0, newlineIndex).trim();
-        buffer = buffer.slice(newlineIndex + 1);
-
-        if (!raw) {
-          continue;
-        }
-
-        applyEvent(JSON.parse(raw) as NarravoReviewStreamEvent);
-      }
-    }
-
-    const trailing = buffer.trim();
-    if (trailing) {
-      applyEvent(JSON.parse(trailing) as NarravoReviewStreamEvent);
-    }
-  });
-
-  useEffect(() => {
-    const nextState = createInitialState(initialUrl);
-
-    if (nextState.kind === 'idle-invalid') {
-      return;
-    }
-
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => {
-      void startReview(nextState.url, controller.signal).catch((error) => {
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        setState({
-          kind: 'recoverable-error',
-          url: nextState.url,
-          error: {
-            code: 'resolve_failure',
-            status: 500,
-            title: 'Narravo could not finish the review',
-            message:
-              error instanceof Error
-                ? error.message
-                : 'An unexpected error interrupted the review stream.',
-            hint: 'Retry the review or return to the landing page.',
-          },
-        });
-      });
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-      controller.abort();
-    };
-  }, [attempt, initialUrl]);
-
-  const heroMetadata =
-    state.kind === 'streaming-review' || state.kind === 'parsed-complete'
-      ? state.metadata
-      : state.kind === 'resolving'
-        ? state.metadata
-        : null;
+  }
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
-      <section className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <div className="space-y-6">
-          <div className="rounded-[2rem] border border-border/70 bg-card/90 p-5 shadow-[0_24px_80px_-52px_rgba(40,28,21,0.45)]">
-            <div className="mb-5 flex items-center gap-2">
-              <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px] tracking-[0.18em] uppercase">
-                Shareable review
-              </Badge>
-            </div>
-            <ReviewHero state={state} metadata={heroMetadata} />
-          </div>
-
-          <UrlSubmissionForm
-            defaultValue={initialUrl}
-            compact
-            showExamples={state.kind === 'recoverable-error'}
+    <div className={cn('space-y-3', className)}>
+      <form
+        onSubmit={onSubmit}
+        className={cn(
+          'rounded-[1.75rem] border border-border/70 bg-card/90 p-3 shadow-[0_24px_80px_-52px_rgba(40,28,21,0.45)] backdrop-blur',
+          compact ? 'max-w-none' : 'max-w-3xl',
+        )}
+      >
+        <label
+          htmlFor={fieldId}
+          className="mb-3 flex items-center gap-2 px-2 text-sm font-medium text-foreground"
+        >
+          <Link2 className="size-4 text-(--color-accent-strong)" />
+          Paste a Spotify or YouTube Music track link
+        </label>
+        <div className="flex flex-col gap-3 md:flex-row">
+          <Input
+            id={fieldId}
+            type="url"
+            inputMode="url"
+            autoFocus={autoFocus}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="https://open.spotify.com/track/..."
+            aria-invalid={error ? 'true' : 'false'}
+            aria-describedby={error ? `${fieldId}-error` : `${fieldId}-hint`}
+            className="h-14 rounded-[1.2rem] border-border/80 bg-background px-4 text-base md:flex-1"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
           />
-
-          <div className="rounded-[1.75rem] border border-border/70 bg-card/80 p-5">
-            <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
-              Trust boundary
-            </p>
-            <p className="mt-3 text-sm leading-7 text-muted-foreground">
-              Narravo separates resolved facts, grounded cues, and critic
-              interpretation. If lyrical context is incomplete, the confidence note
-              should say so rather than bluffing certainty.
-            </p>
-          </div>
+          <Button
+            type="submit"
+            size="lg"
+            className="h-14 cursor-pointer rounded-[1.2rem] px-6 text-sm font-semibold"
+            disabled={isPending}
+          >
+            {isPending ? 'Opening review...' : 'Review this song'}
+            <ArrowRight className="size-4" />
+          </Button>
         </div>
+        <p
+          id={`${fieldId}-hint`}
+          className="mt-3 px-2 text-sm leading-7 text-muted-foreground"
+        >
+          Narravo only supports Spotify and YouTube Music track URLs for this
+          MVP.
+        </p>
+        {error ? (
+          <p
+            id={`${fieldId}-error`}
+            role="alert"
+            className="mt-2 px-2 text-sm font-medium text-destructive"
+          >
+            {error}
+          </p>
+        ) : null}
+      </form>
 
-        <div className="space-y-6">
-          <StreamingReviewPanel state={state} />
-          <EvidenceAndRubric state={state} />
-
-          {state.kind === 'recoverable-error' ? (
-            <ReviewErrorState
-              error={state.error}
-              onRetry={() => setAttempt((value) => value + 1)}
-            />
-          ) : null}
+      {showExamples ? (
+        <div className="flex flex-wrap gap-2 px-1">
+          {demoLinks.map((example) => (
+            <Link
+              key={example.href}
+              href={`/review?url=${encodeURIComponent(example.href)}`}
+              className="rounded-full border border-border/80 bg-background/75 px-3 py-1.5 text-sm text-muted-foreground transition hover:border-foreground/20 hover:text-foreground"
+            >
+              {example.label}
+            </Link>
+          ))}
         </div>
-      </section>
-    </main>
+      ) : null}
+    </div>
   );
 }
 
-function ReviewHero({
+export function EmptyState({
+  icon,
+  title,
+  body,
+}: {
+  icon: ReactNode;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded-[1.5rem] border border-dashed border-border/80 bg-background/70 p-6 text-center">
+      <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        {icon}
+      </div>
+      <h2 className="mt-4 font-heading text-2xl font-semibold tracking-tight text-foreground">
+        {title}
+      </h2>
+      <p className="mt-2 text-sm leading-7 text-muted-foreground">{body}</p>
+    </div>
+  );
+}
+
+export function ReviewErrorState({
+  error,
+  onRetry,
+}: {
+  error: NarravoRecoverableError;
+  onRetry: () => void;
+}) {
+  return (
+    <Card className="rounded-[2rem] border border-destructive/30 bg-destructive/5 py-0 shadow-[0_24px_80px_-52px_rgba(40,28,21,0.25)]">
+      <CardHeader className="border-b border-destructive/20 py-5">
+        <CardTitle className="flex items-center gap-2 font-heading text-3xl font-semibold tracking-tight text-foreground">
+          <AlertCircle className="size-5 text-destructive" />
+          {error.title}
+        </CardTitle>
+        <CardDescription className="text-sm leading-7 text-foreground/80">
+          {error.message}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5 py-6">
+        <div className="rounded-[1.5rem] border border-destructive/20 bg-background/80 p-4">
+          <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+            Recovery path
+          </p>
+          <p className="mt-2 text-sm leading-7 text-foreground">{error.hint}</p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            type="button"
+            size="lg"
+            className="cursor-pointer rounded-full px-5"
+            onClick={onRetry}
+          >
+            <RefreshCcw className="size-4" />
+            Retry review
+          </Button>
+          <Button
+            asChild
+            type="button"
+            size="lg"
+            variant="outline"
+            className="cursor-pointer rounded-full px-5"
+          >
+            <Link href="/">Back to home</Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function ReviewHero({
   state,
   metadata,
 }: {
@@ -383,7 +317,7 @@ function ReviewHero({
   );
 }
 
-function StreamingReviewPanel({ state }: { state: ReviewState }) {
+export function StreamingReviewPanel({ state }: { state: ReviewState }) {
   const isReviewVisible =
     state.kind === 'streaming-review' || state.kind === 'parsed-complete';
 
@@ -394,8 +328,8 @@ function StreamingReviewPanel({ state }: { state: ReviewState }) {
           The critic&apos;s read
         </CardTitle>
         <CardDescription className="text-sm leading-7">
-          Long-form interpretation appears before the evidence rubric so the page
-          still reads like criticism rather than a dashboard.
+          Long-form interpretation appears before the evidence rubric so the
+          page still reads like criticism rather than a dashboard.
         </CardDescription>
       </CardHeader>
       <CardContent className="py-6">
@@ -458,7 +392,7 @@ function StreamingReviewPanel({ state }: { state: ReviewState }) {
   );
 }
 
-function EvidenceAndRubric({ state }: { state: ReviewState }) {
+export function EvidenceAndRubric({ state }: { state: ReviewState }) {
   if (state.kind === 'parsed-complete') {
     return (
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
@@ -500,7 +434,8 @@ function EvidenceAndRubric({ state }: { state: ReviewState }) {
               Meaning-first rubric
             </CardTitle>
             <CardDescription className="text-sm leading-7">
-              Scores arrive after the prose so the review keeps its editorial center.
+              Scores arrive after the prose so the review keeps its editorial
+              center.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5 py-6">
@@ -581,7 +516,7 @@ function EvidenceAndRubric({ state }: { state: ReviewState }) {
   return null;
 }
 
-function LoadingCard({ title, body }: { title: string; body: string }) {
+export function LoadingCard({ title, body }: { title: string; body: string }) {
   return (
     <Card className="rounded-[2rem] border border-border/70 bg-card/90 py-0 shadow-[0_24px_80px_-52px_rgba(40,28,21,0.45)]">
       <CardHeader className="border-b border-border/70 py-5">
@@ -599,74 +534,135 @@ function LoadingCard({ title, body }: { title: string; body: string }) {
   );
 }
 
-function ReviewErrorState({
-  error,
-  onRetry,
+export function LyricsIntelligenceSection({
+  intelligence,
 }: {
-  error: NarravoRecoverableError;
-  onRetry: () => void;
+  intelligence: LyricsIntelligence | null | undefined;
 }) {
-  return (
-    <Card className="rounded-[2rem] border border-destructive/30 bg-destructive/5 py-0 shadow-[0_24px_80px_-52px_rgba(40,28,21,0.25)]">
-      <CardHeader className="border-b border-destructive/20 py-5">
-        <CardTitle className="flex items-center gap-2 font-heading text-3xl font-semibold tracking-tight text-foreground">
-          <AlertCircle className="size-5 text-destructive" />
-          {error.title}
-        </CardTitle>
-        <CardDescription className="text-sm leading-7 text-foreground/80">
-          {error.message}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5 py-6">
-        <div className="rounded-[1.5rem] border border-destructive/20 bg-background/80 p-4">
-          <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
-            Recovery path
-          </p>
-          <p className="mt-2 text-sm leading-7 text-foreground">{error.hint}</p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <Button
-            type="button"
-            size="lg"
-            className="cursor-pointer rounded-full px-5"
-            onClick={onRetry}
-          >
-            <RefreshCcw className="size-4" />
-            Retry review
-          </Button>
-          <Button
-            asChild
-            type="button"
-            size="lg"
-            variant="outline"
-            className="cursor-pointer rounded-full px-5"
-          >
-            <Link href="/">Back to home</Link>
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  if (!intelligence) return null;
+  return <LyricsIntelligencePanel intelligence={intelligence} />;
 }
 
-function EmptyState({
-  icon,
-  title,
-  body,
-}: {
-  icon: ReactNode;
-  title: string;
-  body: string;
-}) {
+export function LyricsUploader({ onLyrics, activeLyrics }: LyricsUploaderProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [error, setError] = useState<string>('');
+
+  async function handleFile(file: File) {
+    setError('');
+
+    if (!file.name.endsWith('.txt') && file.type !== 'text/plain') {
+      setError('Only .txt files are supported.');
+      return;
+    }
+
+    if (file.size > 64 * 1024) {
+      setError('File is too large. Max 64 KB.');
+      return;
+    }
+
+    const text = await file.text();
+    const trimmed = text.trim();
+
+    if (!trimmed) {
+      setError('The file appears to be empty.');
+      return;
+    }
+
+    setFileName(file.name);
+    onLyrics(trimmed);
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) void handleFile(file);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file) void handleFile(file);
+  }
+
+  function clear() {
+    setFileName(null);
+    setError('');
+    onLyrics(null);
+    if (inputRef.current) inputRef.current.value = '';
+  }
+
   return (
-    <div className="rounded-[1.5rem] border border-dashed border-border/80 bg-background/70 p-6 text-center">
-      <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        {icon}
-      </div>
-      <h2 className="mt-4 font-heading text-2xl font-semibold tracking-tight text-foreground">
-        {title}
-      </h2>
-      <p className="mt-2 text-sm leading-7 text-muted-foreground">{body}</p>
+    <div className="rounded-[1.75rem] border border-border/70 bg-card/80 p-5">
+      <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+        Supply lyrics
+      </p>
+      <p className="mt-2 text-sm leading-7 text-muted-foreground">
+        If this track isn&apos;t in our lyrics database, upload a{' '}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">.txt</code> file
+        with the lyrics. User-supplied lyrics take priority over all other sources.
+      </p>
+
+      {fileName ? (
+        /* Loaded state */
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-[1.25rem] border border-border/70 bg-background/80 px-4 py-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <FileText className="size-4 shrink-0 text-(--color-accent-strong)" />
+            <span className="truncate text-sm font-medium text-foreground">
+              {fileName}
+            </span>
+            {activeLyrics && (
+              <span className="shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                Active
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={clear}
+            className="shrink-0 rounded-full p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            aria-label="Remove lyrics file"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      ) : (
+        /* Drop zone */
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          className="mt-4 flex flex-col items-center gap-3 rounded-[1.25rem] border border-dashed border-border bg-background/60 px-4 py-6 text-center transition hover:border-foreground/20 hover:bg-background/80"
+        >
+          <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Upload className="size-4" />
+          </div>
+          <div>
+            <p className="text-sm text-foreground">
+              Drop a <code className="rounded bg-muted px-1 py-0.5 text-xs">.txt</code> file here
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">or</p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="cursor-pointer rounded-full px-4"
+            onClick={() => inputRef.current?.click()}
+          >
+            Browse file
+          </Button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".txt,text/plain"
+            className="sr-only"
+            onChange={handleChange}
+          />
+        </div>
+      )}
+
+      {error && (
+        <p className="mt-2 px-1 text-sm font-medium text-destructive">{error}</p>
+      )}
     </div>
   );
 }

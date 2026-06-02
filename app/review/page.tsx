@@ -1,4 +1,4 @@
-import { ReviewExperience } from '@/components/narravo/review-experience';
+import { ReviewExperience } from '@/components/pages/review';
 
 type ReviewPageProps = {
   searchParams: Promise<{
@@ -9,8 +9,8 @@ type ReviewPageProps = {
 export default async function ReviewPage({ searchParams }: ReviewPageProps) {
   const params = await searchParams;
   const initialUrl = Array.isArray(params.url)
-    ? params.url[0] ?? ''
-    : params.url ?? '';
+    ? (params.url[0] ?? '')
+    : (params.url ?? '');
 
   return <ReviewExperience key={initialUrl} initialUrl={initialUrl} />;
 }
