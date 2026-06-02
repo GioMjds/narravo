@@ -116,11 +116,17 @@ export function parseSpecialistOutput(
     }
   }
 
+  function canonicalRef(ref: string): string {
+    // If it's a section-qualified line ref like "S001-L001", strip the section prefix
+    const lineOnlyMatch = ref.match(/^S\d+-(.+)$/);
+    return lineOnlyMatch ? lineOnlyMatch[1] : ref;
+  }
+
   // Require that each claim's refs also appear in the top-level EvidenceRefs.
-  const topLevelSet = new Set(evidenceRefs);
+  const topLevelSet = new Set(evidenceRefs.map(canonicalRef));
   for (const claim of claims) {
     for (const ref of claim.evidenceRefs) {
-      if (!topLevelSet.has(ref)) {
+      if (!topLevelSet.has(canonicalRef(ref))) {
         return {
           ok: false,
           reason: `Claim ref "${ref}" missing from top-level <EvidenceRefs>`,

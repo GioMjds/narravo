@@ -56,7 +56,8 @@ export type ModelAdapter = {
 // Per-role model ID overrides. Defaults below are applied when a role is
 // not explicitly configured. Env variable name: NARRAVO_MODEL_<ROLE>.
 function envKey(role: ModelRole): string {
-  return `NARRAVO_MODEL_${role.replace(/[A-Z]/g, (m) => `_${m.toUpperCase()}`)}`;
+  const snake = role.replace(/[A-Z]/g, (m) => `_${m}`).toUpperCase();
+  return `NARRAVO_MODEL_${snake}`;
 }
 
 const DEFAULT_GENERATION_MODEL = 'gemini-2.5-flash';
@@ -97,7 +98,10 @@ export function resolveModelIdForRole(role: ModelRole): string {
 // swap an adapter in without touching the rest of the pipeline.
 const adapterRegistry = new Map<ModelRole, ModelAdapter>();
 
-export function registerModelAdapter(role: ModelRole, adapter: ModelAdapter): void {
+export function registerModelAdapter(
+  role: ModelRole,
+  adapter: ModelAdapter,
+): void {
   adapterRegistry.set(role, adapter);
 }
 

@@ -55,7 +55,8 @@ export function createGeminiAdapter(role: ModelRole): ModelAdapter {
           ok: false,
           error: {
             code: 'resolve_failure',
-            message: err instanceof Error ? err.message : 'Gemini generate failed',
+            message:
+              err instanceof Error ? err.message : 'Gemini generate failed',
           },
         };
       }
@@ -70,20 +71,29 @@ export function createGeminiAdapter(role: ModelRole): ModelAdapter {
         return { iterator: failing() };
       }
 
-      const model = client.getGenerativeModel({
-        model: modelId,
-        systemInstruction: request.systemInstruction,
-      });
-      const result = await model.generateContentStream(request.userPrompt);
+      try {
+        const model = client.getGenerativeModel({
+          model: modelId,
+          systemInstruction: request.systemInstruction,
+        });
+        const result = await model.generateContentStream(request.userPrompt);
 
-      async function* streamChunks(): AsyncIterable<string> {
-        for await (const chunk of result.stream) {
-          const text = chunk.text();
-          if (text) yield text;
+        async function* streamChunks(): AsyncIterable<string> {
+          for await (const chunk of result.stream) {
+            const text = chunk.text();
+            if (text) yield text;
+          }
         }
-      }
 
-      return { iterator: streamChunks() };
+        return { iterator: streamChunks() };
+      } catch (err) {
+        async function* failing(): AsyncIterable<string> {
+          throw err instanceof Error
+            ? err
+            : new Error('Gemini stream init failed');
+        }
+        return { iterator: failing() };
+      }
     },
 
     async embed(request: EmbedRequest): Promise<EmbedResult> {
