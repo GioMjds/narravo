@@ -1,4 +1,4 @@
-import type { NormalizedMetadata, ContentType } from './types';
+import type { NormalizedMetadata } from './types';
 
 const BASE = 'https://www.googleapis.com/youtube/v3';
 
