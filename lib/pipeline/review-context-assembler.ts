@@ -12,6 +12,8 @@ import type {
   EvidenceBlock,
 } from '@/lib/pipeline/types';
 import { fetchLyricsFromGenius } from './genius-lyrics';
+import { assembleMusicContext } from './music-context-assembler';
+import type { MusicContextMissingSignal } from './music-context-types';
 
 export async function assembleContext(
   metadata: NormalizedMetadata,
@@ -47,7 +49,7 @@ export async function assembleContext(
       break;
   }
 
-  // ── Always try artist context ────────────────────────────────────────────────
+  // ── Always try artist context (Last.fm) ─────────────────────────────────────
   const artistCtx = await fetchArtistContext(metadata.artistName);
   if (artistCtx.bioSummary) {
     evidenceBlocks.push({
@@ -67,15 +69,19 @@ export async function assembleContext(
     });
   }
 
+  // ── Music Context Layer (MusicBrainz enrichment) ───────────────────────────
+  // Runs only for tracks, albums, and EP/singles. Playlists are skipped per
+  // the Phase 1.0 non-goals. Failures are best-effort: the layer logs
+  // internally and returns empty facts + category-level missing signals.
+  if (metadata.contentType !== 'playlist') {
+    await applyMusicContextLayer(metadata, evidenceBlocks, missingSignals);
+  }
+
   // ── Derive confidence inputs ──────────────────────────────────────────────────
   const hasLyrics = evidenceBlocks.some((b) => b.kind === 'lyrics');
   const hasDescription = evidenceBlocks.some((b) => b.kind === 'description');
   const hasTracklist = evidenceBlocks.some((b) => b.kind === 'tracklist');
 
-  // Coverage bands:
-  // rich    = lyrics present, OR description + tags present
-  // partial = at least metadata + one enrichment signal
-  // sparse  = metadata only
   const enrichmentCount = evidenceBlocks.filter(
     (b) => b.kind !== 'metadata',
   ).length;
@@ -97,6 +103,58 @@ export async function assembleContext(
   };
 }
 
+// ─── Music Context Layer integration ─────────────────────────────────────────
+
+async function applyMusicContextLayer(
+  metadata: NormalizedMetadata,
+  evidenceBlocks: EvidenceBlock[],
+  missingSignals: string[],
+): Promise<void> {
+  try {
+    console.log('[assembler] Running Music Context Layer...');
+    const { evidenceBlocks: mbBlocks, packet } =
+      await assembleMusicContext(metadata);
+
+    if (mbBlocks.length > 0) {
+      console.log(
+        `[assembler] ✓ Music Context Layer added ${mbBlocks.length} evidence block(s)`,
+      );
+      evidenceBlocks.push(...mbBlocks);
+    }
+
+    // Translate category-level missing signals from the Music Context Layer
+    // into the existing missingSignals string array format.
+    for (const signal of packet.missingSignals) {
+      const readable = musicContextMissingToReadable(signal);
+      if (readable && !missingSignals.includes(readable)) {
+        missingSignals.push(readable);
+      }
+    }
+  } catch (err) {
+    // Enrichment failure — not a pipeline failure. Log and continue.
+    console.warn(
+      '[assembler] Music Context Layer failed (non-fatal):',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+function musicContextMissingToReadable(
+  signal: MusicContextMissingSignal,
+): string | null {
+  const map: Record<MusicContextMissingSignal, string> = {
+    artist_background: 'artist context',
+    discography_context: 'discography context',
+    release_concept: 'release concept',
+    release_era: 'release era',
+    genre_context: 'genre context',
+    credits: 'credits',
+    featured_artists: 'featured artists',
+    album_continuity: 'album continuity',
+  };
+  return map[signal] ?? null;
+}
+
 // ─── Track ────────────────────────────────────────────────────────────────────
 
 async function assembleTrackEvidence(
@@ -108,7 +166,7 @@ async function assembleTrackEvidence(
   let normalizedLyricSections: RawSection[] | null = null;
 
   if (userLyrics) {
-    console.log('[assembler] ✓ Lyrics from lrclib');
+    console.log('[assembler] ✓ Lyrics from user upload');
     blocks.push({
       kind: 'lyrics',
       label: 'Lyrics',
@@ -124,7 +182,11 @@ async function assembleTrackEvidence(
 
     if (lyricsResult.ok) {
       console.log('[assembler] ✓ Lyrics from lrclib');
-      blocks.push({ kind: 'lyrics', label: 'Lyrics', text: lyricsResult.lyrics });
+      blocks.push({
+        kind: 'lyrics',
+        label: 'Lyrics',
+        text: lyricsResult.lyrics,
+      });
       normalizedLyricSections = detectSections(lyricsResult.lyrics);
     } else {
       console.log(`[assembler] lrclib miss — trying Genius`);
@@ -135,7 +197,11 @@ async function assembleTrackEvidence(
 
       if (geniusResult.ok) {
         console.log('[assembler] ✓ Lyrics from Genius');
-        blocks.push({ kind: 'lyrics', label: 'Lyrics', text: geniusResult.lyrics });
+        blocks.push({
+          kind: 'lyrics',
+          label: 'Lyrics',
+          text: geniusResult.lyrics,
+        });
         normalizedLyricSections = detectSections(geniusResult.lyrics);
       } else {
         console.log('[assembler] No lyrics from any source');
@@ -234,12 +300,9 @@ async function assemblePlaylistEvidence(
   blocks: EvidenceBlock[],
   missing: string[],
 ): Promise<null> {
-  // Playlists have no Last.fm equivalent — metadata + artist tags
-  // are the main signals. Mark the key gaps explicitly.
   missing.push('playlist editorial description');
   missing.push('individual track lyrics');
 
-  // If playlist has a description from the resolver, include it
   if (
     metadata.albumOrCollectionTitle &&
     metadata.albumOrCollectionTitle !== metadata.title
