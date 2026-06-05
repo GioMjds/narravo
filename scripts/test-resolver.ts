@@ -14,6 +14,8 @@ async function main() {
     // YouTube Music
     'https://music.youtube.com/watch?v=hLQl3WQQoQ0',
     'https://music.youtube.com/watch?v=AJtDXIazrMo',
+    'https://music.youtube.com/watch?v=iB9RuRQiJG8&si=vHXO6HarsSKtlgmb',
+    'https://music.youtube.com/watch?v=BKrrpJTAlkQ&si=Z0q7q0HAf9EY8J9G',
     'https://music.youtube.com/playlist?list=OLAK5uy_kmZrc98HkZdbCgzyFIxy9v29a6a0kD4Io&si=i7zMGO6iwUpO9Dvw',
   ];
 

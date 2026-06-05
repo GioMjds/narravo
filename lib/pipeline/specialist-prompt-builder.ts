@@ -21,6 +21,11 @@ const SPECIALIST_XML_CONTRACT = `
 
     Rules:
     - Cite ONLY evidence refs that appear in the numbered evidence list above.
+    - Each ref must be a single atomic token: E001 (evidence block), S001 (lyric
+      section), or S001-L001 (lyric line). Never combine with dots.
+      Multiple refs in a Claim use comma separation: refs="E001,S001-L003".
+    - For lyric line refs, copy them VERBATIM from the "### Lyrics" section.
+      Never construct refs by counting lines in the raw evidence blocks.
     - Do not invent facts, lyrics, lines, sections, or refs.
     - If the available evidence cannot support a claim, set Confidence="low" and
       include a RefusalReason instead of guessing.
