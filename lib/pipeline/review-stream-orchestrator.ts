@@ -1,7 +1,7 @@
 import { resolveSource } from './review-source-resolver';
 import { routeTemplate } from './review-template-router';
 import { assembleContext } from './review-context-assembler';
-import { buildPrompt } from './review-prompt-builder';
+import { buildReviewerSynthesisPrompt } from './review-prompt-builder';
 import { streamFromGemini } from './gemini-review-client';
 import { parseGeminiOutput } from './review-output-parser';
 import type {
@@ -9,6 +9,15 @@ import type {
   NarravoRecoverableError,
 } from '@/lib/narravo-review';
 import { backfillLineText } from './review-output-parser';
+import { buildRankedEvidencePacket } from './evidence-ranker';
+import { runSpecialists } from './specialist-orchestrator';
+import { requireModelAdapter, type StreamResult } from './model-registry';
+import { registerDefaultGeminiAdapters } from './gemini-provider';
+
+// Side-effect: register Gemini-backed adapters for all model roles once
+// the orchestrator module is imported. The first call to runReviewPipeline
+// will use these adapters; tests can override via the model registry.
+registerDefaultGeminiAdapters();
 
 function pipelineErrorToRecoverable(
   code: string,
@@ -43,6 +52,13 @@ function pipelineErrorToRecoverable(
       message,
       hint: 'Retry in a moment.',
     },
+    specialist_failure: {
+      code: 'resolve_failure',
+      status: 422,
+      title: 'Specialist analysis failed',
+      message,
+      hint: 'Retry the request — this is usually transient.',
+    },
   };
 
   return (
@@ -56,11 +72,15 @@ function pipelineErrorToRecoverable(
   );
 }
 
+type PipelineRunResult =
+  | { ok: true }
+  | { ok: false; error: NarravoRecoverableError };
+
 export async function runReviewPipeline(
   url: string,
   emit: (event: NarravoReviewStreamEvent) => void,
   userLyrics?: string,
-): Promise<{ ok: true } | { ok: false; error: NarravoRecoverableError }> {
+): Promise<PipelineRunResult> {
   console.log('\n[pipeline] ══════════════════════════════════════');
   console.log('[pipeline] Starting review pipeline for:', url);
   console.log('[pipeline] ══════════════════════════════════════');
@@ -111,16 +131,40 @@ export async function runReviewPipeline(
 
   // ── Stage 3: Assemble context ─────────────────────────────────────────────
   console.log('[pipeline] Stage 3: Assembling context...');
-  const context = await assembleContext(resolved.metadata);
+  const context = await assembleContext(resolved.metadata, userLyrics);
   console.log('[pipeline] ✓ Context assembled:', {
     coverage: context.coverage,
     evidenceKinds: context.evidenceBlocks.map((b) => b.kind),
     missingSignals: context.missingSignals,
   });
 
-  // ── Stage 4: Build prompt ─────────────────────────────────────────────────
-  console.log('[pipeline] Stage 4: Building prompt...');
-  const plan = buildPrompt(templateKey, context);
+  // ── Stage 3b: Per-request evidence ranking ─────────────────────────────────
+  console.log('[pipeline] Stage 3b: Ranking evidence for specialists...');
+  const ranked = buildRankedEvidencePacket(context);
+
+  // ── Stage 4: Parallel specialist analysis ─────────────────────────────────
+  console.log('[pipeline] Stage 4: Running parallel specialists...');
+  const specialistResult = await runSpecialists(ranked);
+  if (!specialistResult.ok) {
+    console.error('[pipeline] ✗ Stage 4 failed:', specialistResult.reason);
+    return {
+      ok: false,
+      error: pipelineErrorToRecoverable(
+        'specialist_failure',
+        specialistResult.reason,
+      ),
+    };
+  }
+  console.log('[pipeline] ✓ Stage 4 complete | specialists validated');
+
+  // ── Stage 5: Build reviewer synthesis prompt ──────────────────────────────
+  console.log('[pipeline] Stage 5: Building reviewer synthesis prompt...');
+  const plan = buildReviewerSynthesisPrompt(
+    templateKey,
+    context,
+    ranked,
+    specialistResult.packet,
+  );
   console.log(
     '[pipeline] ✓ Prompt built | system:',
     plan.systemInstruction.length,
@@ -129,16 +173,39 @@ export async function runReviewPipeline(
     'chars',
   );
 
-  // ── Stage 5: Stream from Gemini ───────────────────────────────────────────
-  console.log('[pipeline] Stage 5: Streaming from Gemini...');
+  // ── Stage 6: Stream from reviewer model ───────────────────────────────────
+  console.log('[pipeline] Stage 6: Streaming from reviewer model...');
   let reviewText = '';
-  const geminiResult = await streamFromGemini(plan, (chunk) => {
-    reviewText += chunk;
-    emit({ type: 'chunk', chunk });
-  });
+  let geminiResult:
+    | { ok: true; fullText: string }
+    | { ok: false; error: { code: string; message: string } };
+
+  // Prefer the model-registry streaming adapter for the reviewer role. This
+  // keeps the streaming boundary aligned with the rest of the registry; the
+  // historical `streamFromGemini` helper remains for any other caller.
+  try {
+    const reviewer = requireModelAdapter('reviewer');
+    const stream = await reviewer.stream({
+      systemInstruction: plan.systemInstruction,
+      userPrompt: plan.userPrompt,
+    });
+    geminiResult = await consumeReviewerStream(stream, (chunk) => {
+      reviewText += chunk;
+      emit({ type: 'chunk', chunk });
+    });
+  } catch (err) {
+    // Fall back to the direct Gemini helper if the registry has no
+    // reviewer adapter (e.g. during partial test setups). The helper
+    // is provider-specific but is the v1 default.
+    console.warn('[pipeline] Falling back to direct Gemini client:', err);
+    geminiResult = await streamFromGemini(plan, (chunk) => {
+      reviewText += chunk;
+      emit({ type: 'chunk', chunk });
+    });
+  }
 
   if (!geminiResult.ok) {
-    console.error('[pipeline] ✗ Stage 5 failed:', geminiResult.error);
+    console.error('[pipeline] ✗ Stage 6 failed:', geminiResult.error);
     return {
       ok: false,
       error: pipelineErrorToRecoverable(
@@ -149,18 +216,18 @@ export async function runReviewPipeline(
   }
 
   console.log(
-    '[pipeline] ✓ Stage 5 complete | reviewText accumulated:',
+    '[pipeline] ✓ Stage 6 complete | reviewText accumulated:',
     reviewText.trim().length,
     'chars',
   );
 
-  // ── Stage 6: Parse output ─────────────────────────────────────────────────
-  console.log('[pipeline] Stage 6: Parsing Gemini output...');
+  // ── Stage 7: Parse output ─────────────────────────────────────────────────
+  console.log('[pipeline] Stage 7: Parsing reviewer output...');
 
   const parsed = parseGeminiOutput(geminiResult.fullText, reviewText.trim());
 
   if (!parsed.ok) {
-    console.error('[pipeline] ✗ Stage 6 failed:', parsed.error);
+    console.error('[pipeline] ✗ Stage 7 failed:', parsed.error);
     return {
       ok: false,
       error: pipelineErrorToRecoverable(
@@ -171,7 +238,7 @@ export async function runReviewPipeline(
   }
 
   console.log(
-    '[pipeline] ✓ Stage 6 complete | evidence sections:',
+    '[pipeline] ✓ Stage 7 complete | evidence sections:',
     parsed.result.evidence.length,
     '| scores:',
     parsed.result.scores.length,
@@ -194,4 +261,45 @@ export async function runReviewPipeline(
 
   emit({ type: 'complete', result: finalResult });
   return { ok: true };
+}
+
+// Consume the model-registry stream and split out the prose parts. Mirrors
+// the XML-tail detection behavior of the existing gemini-review-client so
+// chunk events never leak XML or specialist output.
+async function consumeReviewerStream(
+  stream: StreamResult,
+  onProseChunk: (text: string) => void,
+): Promise<
+  | { ok: true; fullText: string }
+  | { ok: false; error: { code: string; message: string } }
+> {
+  let fullText = '';
+  let emittedLength = 0;
+  let xmlStarted = false;
+  try {
+    for await (const text of stream.iterator) {
+      fullText += text;
+      if (!xmlStarted) {
+        const xmlIndex = fullText.indexOf('<ReviewResult>');
+        if (xmlIndex !== -1) {
+          xmlStarted = true;
+          const proseChunk = fullText.slice(emittedLength, xmlIndex);
+          if (proseChunk.trim()) onProseChunk(proseChunk);
+        } else {
+          const proseChunk = fullText.slice(emittedLength);
+          if (proseChunk) onProseChunk(proseChunk);
+          emittedLength = fullText.length;
+        }
+      }
+    }
+    return { ok: true, fullText };
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        code: 'resolve_failure',
+        message: err instanceof Error ? err.message : 'Reviewer stream failed',
+      },
+    };
+  }
 }

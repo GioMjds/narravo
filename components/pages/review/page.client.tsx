@@ -226,9 +226,7 @@ export function ReviewExperience({ initialUrl }: ReviewExperienceProps) {
             <LyricsUploader
               onLyrics={setUserLyrics}
               activeLyrics={
-                (state.kind === 'parsed-complete' ||
-                  state.kind === 'streaming-review') &&
-                state.userLyricsActive
+                state.kind === 'parsed-complete' && state.userLyricsActive
               }
             />
           )}
